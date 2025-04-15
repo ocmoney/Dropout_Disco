@@ -1,9 +1,9 @@
 # Hacker News Upvote Prediction
-# Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
 # File: src/__init__.py
 # Description: Initializes the src package.
-# Created: 2024-04-15
-# Updated: 2024-04-15
+# Created: 2025-04-15
+# Updated: 2025-04-15
 
 try:
     from utils import logger
