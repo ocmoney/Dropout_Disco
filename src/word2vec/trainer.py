@@ -1,9 +1,9 @@
 # Hacker News Upvote Prediction
-# Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
 # File: src/word2vec/trainer.py
 # Description: Handles the training process for the word2vec model.
-# Created: 2024-04-15
-# Updated: 2024-04-15 # Adjust date if modified
+# Created: 2025-04-15
+# Updated: 2025-04-15 # Adjust date if modified
 
 import torch
 import torch.nn as nn
