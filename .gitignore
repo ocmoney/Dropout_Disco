@@ -149,3 +149,42 @@ docker-compose.override.yml
 
 
 # .gitignore
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment directories
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / Editor specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Build artifacts / Output data
+logs/
+models/
+*.log
+*.pt
+*.pth
+*.kv
+*.bin
+*.json # Careful if config json is needed
+
+# Secrets
+.env
+*.env.*
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
