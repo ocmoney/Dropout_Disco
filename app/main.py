@@ -1,41 +1,88 @@
+# Hacker News Upvote Prediction
+# Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# File: app/main.py
+# Description: FastAPI application instance and API endpoints.
+# Created: 2025-04-15
+# Updated: 2025-04-15
+
+import os
 from fastapi import FastAPI
-import logging
+# Add other necessary imports later
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# TODO: Define model_version based on saved model
+model_version = "0.0.0" 
 
-app = FastAPI(title="Dropout Disco API", version="0.1.0")
+log_dir_path = "/var/log/app"
+log_path = f"{log_dir_path}/V-{model_version}.log"
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Dropout Disco API starting up...")
+# Ensure log directory exists (useful for local runs, Docker handles volume)
+# os.makedirs(log_dir_path, exist_ok=True) 
 
-@app.get("/")
-async def read_root():
-    """
-    Root endpoint providing a welcome message.
-    """
-    logger.info("Root endpoint accessed.")
-    return {"message": "Welcome to the Dropout Disco API!"}
+app = FastAPI()
 
-@app.get("/health")
-async def health_check():
-    """
-    Simple health check endpoint.
-    """
-    return {"status": "ok"}
+# TODO: Import predictor functions
+# from .predictor import load_models, predict # Example
 
-# Example prediction endpoint placeholder
-# @app.post("/predict")
-# async def predict_score(title: str):
-#     # TODO: Implement prediction logic using your trained model
-#     logger.info(f"Prediction requested for title: {title}")
-#     # score = model.predict(title) # Placeholder
-#     score = 42 # Dummy score
-#     return {"title": title, "predicted_score": score}
+# TODO: Load models on startup (implement robustly)
+# load_models() 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Dropout Disco API shutting down...")
+@app.get("/ping")
+def ping():
+    return "ok"
+
+@app.get("/version")
+def version():
+    # TODO: Get version dynamically if possible
+    return {"version": model_version}
+
+# TODO: Implement logging functions and endpoint
+@app.get("/logs")
+def logs():
+    # return read_logs(log_path)
+    return {"logs": ["Log reading not implemented yet."]}
+
+# TODO: Define input model (Pydantic)
+# class PostInput(BaseModel):
+#     author: str | None = None # Allow optional fields if needed
+#     title: str
+#     timestamp: str | None = None # Or datetime
+
+@app.post("/how_many_upvotes")
+# TODO: Replace 'post: dict' with Pydantic model: post: PostInput
+def how_many_upvotes(post: dict): 
+    # start_time = os.times().elapsed
+    # prediction = predict(post.title) # Call predictor function
+    # end_time = os.times().elapsed
+    # latency = (end_time - start_time) * 1000
+
+    # message = {
+    #    "Latency": latency,
+    #    "Version": model_version,
+    #    "Timestamp": end_time, # Or use datetime.now()
+    #    "Input": post, # Or post.dict() if using Pydantic
+    #    "Prediction": prediction
+    # }
+    # log_request(log_path, message) # Implement logging
+
+    prediction = 0 # Placeholder
+    return {"upvotes": prediction}
+
+# Placeholder for logging functions - Implement these
+def log_request(path, msg):
+    print(f"LOG (to {path}): {msg}") # Basic print logging for now
+    # with open(path, 'a') as f:
+    #     f.write(json.dumps(msg) + '\n')
+    pass
+
+def read_logs(path):
+     # Implement log reading
+    try:
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        return {"logs": [line.strip() for line in lines[-50:]]} # Return last 50 lines
+    except FileNotFoundError:
+        return {"logs": ["Log file not found."]}
+    except Exception as e:
+        return {"logs": [f"Error reading logs: {e}"]}
+
 
