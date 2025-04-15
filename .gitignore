@@ -92,8 +92,6 @@ venv.bak/
 *.pickle
 *.db
 *.sqlite*
-data/ # Ignore entire data directories if large
-
 # --- Model Files ---
 # Ignore large trained model files
 # models/
