@@ -13,15 +13,21 @@ class CROW(torch.nn.Module):
         self.linear = torch.nn.Linear(EMBEDDING_DIM, numOfEmbedings)
         
     def forward(self, inputs):
+        # Ensure input is long tensor
+        if inputs.dtype != torch.long:
+            inputs = inputs.long()
         
-        # print(inputs)
-        embs = self.emb(inputs)       
+        # inputs shape: [batch_size, context_size*2]
+        embs = self.emb(inputs)       # shape: [batch_size, context_size*2, embedding_dim]
         
-        embs = embs.mean(dim=0, keepdim=True)
+        # Average over context window dimension
+        embs = embs.mean(dim=1)       # shape: [batch_size, embedding_dim]
         
-        out = self.linear(embs)
+        # Linear layer
+        out = self.linear(embs)       # shape: [batch_size, vocab_size]
         
-        probs = F.log_softmax(out, dim=1)
+        # Apply log softmax over vocabulary dimension
+        probs = F.log_softmax(out, dim=1)  # shape: [batch_size, vocab_size]
         
         return probs
-        
+

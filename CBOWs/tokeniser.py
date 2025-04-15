@@ -1,4 +1,5 @@
 from pathlib import Path
+import torch
 
 class Tokeniser:
     
@@ -26,3 +27,12 @@ class Tokeniser:
 
         # Return 0 for unknown tokens instead of "no identifyer"
         return [self.identifyers.get(token, 0) for token in tokens]
+    
+    def get_predicted_word(self, probs):
+        # Get the word index with highest probability
+        predicted_idx = torch.argmax(probs, dim=1)
+                
+        reverse_dict = {v: k for k, v in self.identifyers.items()}
+        predicted_word = reverse_dict.get(predicted_idx.item(), "<UNK>")
+        
+        return predicted_word
