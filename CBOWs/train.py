@@ -28,7 +28,7 @@ def collate_batch(batch):
 CONTEXT_SIZE = 2
 BATCH_SIZE = 32
 NUM_EPOCHS = 5
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.0005
 
 class TokenBatchDataset(IterableDataset):
     def __init__(self, tokenizer, context_size, chunk_size=1000000):
