@@ -92,13 +92,9 @@ venv.bak/
 *.pickle
 *.db
 *.sqlite*
-data/ # Ignore entire data directories if large
-
 # --- Model Files ---
 # Ignore large trained model files
-models/
-*.pt
-*.pth
+# models/
 *.bin
 *.h5
 *.onnx
@@ -173,10 +169,10 @@ Thumbs.db
 
 # Build artifacts / Output data
 logs/
-models/
+# models/
 *.log
-*.pt
-*.pth
+# *.pt
+# *.pth
 *.kv
 *.bin
 *.json # Careful if config json is needed
@@ -188,4 +184,5 @@ models/
 # Notebook checkpoints
 .ipynb_checkpoints/
 
+# Ignore W&B files
 wandb/

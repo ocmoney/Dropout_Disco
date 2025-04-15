@@ -1,0 +1,47 @@
+# Hacker News Upvote Prediction
+# Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# File: config.yaml
+# Description: Configuration file for the Word2Vec model training
+# Created: 2025-04-15
+# Updated: 2025-04-15
+
+
+# --- General Paths ---
+paths:
+  corpus_file: "data/text8.txt"                    # Path to the training corpus
+  vocab_file: "models/word2vec/text8_vocab.json"   # Path to save/load vocabulary
+  model_save_dir: "models/word2vec"                # Directory to save trained w2v model
+  log_dir: "logs"                                  # Directory for log files
+  log_file_name: "dropout_disco.log"               # Name for the main log file
+
+# --- Word2Vec Model Hyperparameters ---
+word2vec:
+  model_type: "CBOW"                 # Currently only CBOW implemented
+  embedding_dim: 128                 # Dimensionality of word embeddings
+  window_size: 3                     # Context window size (words on each side)
+  min_word_freq: 5                   # Minimum word frequency for vocabulary
+
+# --- Word2Vec Training Hyperparameters ---
+training:
+  num_words_to_process: 10_000_000   # Max words from corpus (-1 for all)
+  epochs: 5                          # Number of training epochs
+  batch_size: 512                    # Training batch size
+  learning_rate: 0.001               # Initial learning rate for Adam optimizer
+  # Add other training params here if needed (e.g., scheduler settings)
+
+# --- Logging Configuration (Defaults matching logging.py) ---
+# These can still be overridden by environment variables if setup_logging keeps checking them
+logging:
+  log_level: "INFO"                  # Logging level (DEBUG, INFO, WARNING, ERROR)
+  log_file_enabled: True             # Enable/disable file logging
+  log_console_enabled: True          # Enable/disable console logging
+  log_max_bytes: 10485760            # 10 MB = 10 * 1024 * 1024
+  log_backup_count: 5                # Number of backup log files
+
+# --- Future Sections (Example) ---
+# regression:
+#   model_type: "Linear"
+#   input_feature_dim: 128 # Should match word2vec embedding_dim
+#   learning_rate: 0.005
+#   epochs: 20
+#   batch_size: 64

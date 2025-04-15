@@ -1,74 +1,61 @@
 # Hacker News Upvote Prediction
 # Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
 # File: src/word2vec/model.py
-# Description: PyTorch nn.Module definition for Word2Vec (CBOW/SkipGram).
+# Description: Defines the CBOW model architecture.
 # Created: 2025-04-15
-# Updated: 2025-04-15
+# Updated: 2025-04-15 # Adjust date if modified
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from utils import logger
 
-class SkipGramNegativeSampling(nn.Module):
-    def __init__(self, vocab_size, embed_dim):
+class CBOW(nn.Module):
+    """
+    Continuous Bag-of-Words (CBOW) model implementation.
+
+    Predicts a target word based on the average of its context word embeddings.
+    """
+    def __init__(self, vocab_size: int, embedding_dim: int):
+        """
+        Initializes the CBOW model layers.
+
+        Args:
+            vocab_size (int): The total number of unique words.
+            embedding_dim (int): The desired dimensionality of embeddings.
+        """
         super().__init__()
-        self.vocab_size = vocab_size
-        self.embed_dim = embed_dim
-        # Embedding for center words
-        self.center_embeddings = nn.Embedding(vocab_size, embed_dim)
-        # Embedding for context words (often treated differently)
-        self.context_embeddings = nn.Embedding(vocab_size, embed_dim)
-        # Init weights (optional but can help)
-        self.center_embeddings.weight.data.uniform_(-0.5 / embed_dim, 0.5 / embed_dim)
-        self.context_embeddings.weight.data.uniform_(-0.5 / embed_dim, 0.5 / embed_dim)
+        # Input embeddings (lookup table)
+        self.embeddings = nn.Embedding(vocab_size, embedding_dim)
+        # Output layer predicting the target word index
+        self.linear = nn.Linear(embedding_dim, vocab_size)
+        # Optional: Log initialization if logger passed or imported
+        logger.debug(f"CBOW model created: V={vocab_size}, D={embedding_dim}")
 
-
-    def forward(self, center_words, context_words, negative_words):
+    def forward(self, context_indices: torch.Tensor) -> torch.Tensor:
         """
-        center_words: Tensor of shape (batch_size,)
-        context_words: Tensor of shape (batch_size,)
-        negative_words: Tensor of shape (batch_size, num_negative_samples)
+        Defines the forward pass of the CBOW model.
+
+        Args:
+            context_indices (torch.Tensor): Tensor of context word indices
+                                            Shape: (batch_size, context_size).
+
+        Returns:
+            torch.Tensor: Logits over vocabulary for the target word.
+                          Shape: (batch_size, vocab_size).
         """
-        # Get embeddings
-        center_embeds = self.center_embeddings(center_words) # (batch_size, embed_dim)
-        context_embeds = self.context_embeddings(context_words) # (batch_size, embed_dim)
-        negative_embeds = self.context_embeddings(negative_words) # (batch_size, num_negative_samples, embed_dim)
+        # embedded shape: (batch_size, context_size, embedding_dim)
+        embedded = self.embeddings(context_indices)
+        
+        # averaged_embedded shape: (batch_size, embedding_dim)
+        averaged_embedded = embedded.mean(dim=1)
+        
+        # output_logits shape: (batch_size, vocab_size)
+        output_logits = self.linear(averaged_embedded)
+        
+        # Optional: Log output shape if logger passed or imported
+        logger.debug(
+            f"Forward pass: context_indices={context_indices.shape}, "
+            f"output_logits={output_logits.shape}"
+        )
 
-        # Positive score (batch_size, 1)
-        # Use batch matrix multiplication (bmm) for dot product
-        pos_score = torch.bmm(center_embeds.unsqueeze(1), context_embeds.unsqueeze(2)).squeeze(2) # (batch_size, 1)
-
-        # Negative score (batch_size, num_negative_samples)
-        # Use batch matrix multiplication
-        neg_score = torch.bmm(negative_embeds, center_embeds.unsqueeze(2)).squeeze(2) # (batch_size, num_negative_samples)
-
-        # Calculate loss using log-sigmoid
-        pos_loss = F.logsigmoid(pos_score).squeeze()
-        neg_loss = F.logsigmoid(-neg_score).sum(dim=1) # Sum over negative samples
-
-        # Total loss (average over batch)
-        total_loss = -(pos_loss + neg_loss).mean()
-        return total_loss
-
-    def get_embeddings(self):
-        """Helper to get the primary (center) embeddings."""
-        return self.center_embeddings.weight.data.cpu().numpy()
-
-
-# TODO: Implement CBOWNegativeSampling if needed
-class CBOWNegativeSampling(nn.Module):
-     def __init__(self, vocab_size, embed_dim):
-         super().__init__()
-         # TODO: Implement CBOW architecture
-         # Usually involves averaging context embeddings -> linear layer? Or just predict center?
-         # Check original paper or common implementations
-         pass
-
-     def forward(self, context_words, center_word, negative_words):
-         # TODO: Implement CBOW forward pass and loss
-         pass
-
-     def get_embeddings(self):
-         # TODO: Return appropriate embeddings
-         pass
-
+        return output_logits

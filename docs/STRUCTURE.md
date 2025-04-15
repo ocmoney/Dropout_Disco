@@ -37,7 +37,10 @@ This document outlines the directory structure and purpose of key files within t
 │   │   ├── __init__.py      # Makes 'src/regression' a sub-package
 │   │   ├── model.py         # Defines the PyTorch nn.Module for the score predictor
 │   │   └── data_utils.py    # Functions for preparing HN data, averaging embeddings, creating PyTorch Datasets
-│   └── utils.py             # Optional shared utility functions used across different modules
+├── utils/
+│   │   ├── __init__.py      # Makes 'src/utils' a sub-package
+│   │   ├── logging.py       # Logging setup and configuration
+│   │   └── setup_device.py  # Device setup for PyTorch (CPU/GPU) and model loading
 ├── .gitignore               # Specifies intentionally untracked files that Git should ignore (logs, models, env files, cache)
 ├── Dockerfile               # Instructions for building the Docker image for the FastAPI 'app' service
 ├── README.md                # This file - High-level overview of the project
