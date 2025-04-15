@@ -1,3 +1,12 @@
+<!-- Badges -->
+<p align="center">
+  <img src="https://img.shields.io/github/contributors/ocmoney/Dropout_Disco?style=for-the-badge" alt="Contributors"/>
+  <img src="https://img.shields.io/github/issues/ocmoney/Dropout_Disco?style=for-the-badge" alt="Issues"/>
+  <img src="https://img.shields.io/github/license/ocmoney/Dropout_Disco?style=for-the-badge" alt="License"/>
+  <!-- Optional: <img src="https://img.shields.io/github/forks/ocmoney/Dropout_Disco?style=for-the-badge" alt="Forks"/> -->
+  <!-- Optional: <img src="https://img.shields.io/github/stars/ocmoney/Dropout_Disco?style=for-the-badge" alt="Stars"/> -->
+</p>
+
 # Hacker News Upvote Prediction 🚀
 
 [![MLX Institute Logo](https://ml.institute/logo.png)](http://ml.institute)
