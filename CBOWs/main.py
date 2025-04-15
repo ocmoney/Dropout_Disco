@@ -32,4 +32,6 @@ print(identifyer)
 class CBOW(nn.Module):
     
     def __init__(self):
-        super(CBOW, self).__init__()
+        super().__init__()
+        
+        
