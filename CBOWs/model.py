@@ -2,14 +2,26 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class CBOW(nn.Module):
-    
-    def __init__(self, corpusSize:int):
+### Hyperparameters Start ###
+EMBEDDING_DIM = 9
+### Hyperparameters End ###
         
+class CROW(torch.nn.Module):    
+    def __init__(self, numOfEmbedings):
         super().__init__()
+        self.emb = torch.nn.Embedding(numOfEmbedings, EMBEDDING_DIM)
+        self.linear = torch.nn.Linear(EMBEDDING_DIM, numOfEmbedings)
         
-        self.emb = nn.EmbeddingBag(corpusSize, 100)        
+    def forward(self, inputs):
         
-    def forward(self, x):#
-        print(x)
-        # return self.emb(x)
+        # print(inputs)
+        embs = self.emb(inputs)       
+        
+        embs = embs.mean(dim=0, keepdim=True)
+        
+        out = self.linear(embs)
+        
+        probs = F.log_softmax(out, dim=1)
+        
+        return probs
+        

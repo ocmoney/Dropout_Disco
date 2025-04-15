@@ -1,15 +1,14 @@
 from tokeniser import Tokeniser
-from model import CBOW as Model
-
+from model import CROW as Model
+import torch 
 
 tokeniser = Tokeniser()
+identifier = tokeniser.getIdentifyer("Hello my is Bes")
+tokens = torch.tensor(identifier)
+
+# print(tokeniser.getCorpusSize())
 
 model = Model(tokeniser.getCorpusSize())
-
-token = tokeniser.getIdentifyer("the")
-
-# print(token)
-
-res = model.forward(token)
-
+res = model.forward(tokens)
+print(res.shape)
 print(res)
