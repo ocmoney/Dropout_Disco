@@ -1,5 +1,6 @@
-# src/word2vec/dataset.py
+# Hacker News Upvote Prediction
 # Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# File: src/word2vec/dataset.py
 # Description: Creates context-target pairs and PyTorch Dataset for CBOW.
 # Created: 2024-04-15
 # Updated: 2024-04-15 # Adjust date if modified
