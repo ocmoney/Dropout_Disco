@@ -1,9 +1,9 @@
 # Hacker News Upvote Prediction
-# Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
 # File: src/word2vec/__init__.py
 # Description: Initializes the word2vec package.
-# Created: 2024-04-15
-# Updated: 2024-04-15
+# Created: 2025-04-15
+# Updated: 2025-04-15
 
 # Expose key components for easier importing if desired
 from .model import CBOW
