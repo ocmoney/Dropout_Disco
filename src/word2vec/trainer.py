@@ -113,8 +113,9 @@ def train_model(
     logger.info("🏁 Training finished.")
 
     try:
-        os.makedirs(model_save_dir, exist_ok=True)
-        model_save_file = os.path.join(model_save_dir, "cbow_model_state.pth")
+        os.makedirs(model_save_dir, exist_ok=True) # Ensure run directory exists
+        # Use a standard name within the run directory
+        model_save_file = os.path.join(model_save_dir, "model_state.pth")
         torch.save(model.state_dict(), model_save_file)
         logger.info(f"💾 Model state saved to: {model_save_file}")
     except Exception as e:
