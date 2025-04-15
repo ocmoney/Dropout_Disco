@@ -1,10 +1,10 @@
 # Hacker News Upvote Prediction
-# Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
 # File: train_word2vec.py
 # Description: Main script to train the CBOW word2vec model on text8.
 # Accepts hyperparameters via command-line arguments.
-# Created: 2024-04-15
-# Updated: 2024-04-15
+# Created: 2025-04-15
+# Updated: 2025-04-15
 
 import os
 import torch
