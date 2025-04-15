@@ -188,3 +188,4 @@ models/
 # Notebook checkpoints
 .ipynb_checkpoints/
 
+wandb/
