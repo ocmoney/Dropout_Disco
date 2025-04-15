@@ -1,5 +1,6 @@
-# src/word2vec/model.py
+# Hacker News Upvote Prediction
 # Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# File: src/word2vec/model.py
 # Description: Defines the CBOW model architecture.
 # Created: 2024-04-15
 # Updated: 2024-04-15 # Adjust date if modified
@@ -44,10 +45,13 @@ class CBOW(nn.Module):
         """
         # embedded shape: (batch_size, context_size, embedding_dim)
         embedded = self.embeddings(context_indices)
+        
         # averaged_embedded shape: (batch_size, embedding_dim)
         averaged_embedded = embedded.mean(dim=1)
+        
         # output_logits shape: (batch_size, vocab_size)
         output_logits = self.linear(averaged_embedded)
+        
         # Optional: Log output shape if logger passed or imported
         logger.debug(
             f"Forward pass: context_indices={context_indices.shape}, "
