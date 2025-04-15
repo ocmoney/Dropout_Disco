@@ -10,10 +10,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import os
-from tqdm import tqdm # Optional: progress bar
-# Assumes utils is importable from the project root
+from tqdm import tqdm
+from typing import List
 from utils import logger
-# Relative import for model within the same package
 from .model import CBOW
 
 def train_epoch(
@@ -84,24 +83,23 @@ def train_model(
     optimizer: optim.Optimizer,
     device: torch.device,
     epochs: int,
-    model_save_dir: str = "models/word2vec" # Directory to save model
-):
+    model_save_dir: str = "models/word2vec"
+) -> List[float]:
     """
-    Orchestrates the model training over multiple epochs.
+    Orchestrates model training and returns epoch losses.
 
     Args:
-        model: The model to train.
-        dataloader: The data loader.
-        criterion: Loss function.
-        optimizer: Optimizer.
-        device: Device to train on (CPU/MPS).
-        epochs: Number of epochs to train.
-        model_save_dir: Directory path to save the trained model state.
+        # ... (same args as before) ...
+        model_save_dir (str): Directory to save the trained model state.
+
+    Returns:
+        List[float]: A list containing the average loss for each epoch.
     """
     logger.info(
         f"🚀 Starting CBOW training: {epochs} epochs on {device.type.upper()}"
     )
-    model.to(device) # Ensure model is on the correct device
+    model.to(device)
+    epoch_losses = []
 
     for epoch in range(epochs):
         avg_epoch_loss = train_epoch(
@@ -110,15 +108,16 @@ def train_model(
         logger.info(
             f"✅ Epoch {epoch+1}/{epochs} | Avg Loss: {avg_epoch_loss:.4f}"
         )
+        epoch_losses.append(avg_epoch_loss)
 
     logger.info("🏁 Training finished.")
-    # Save the trained model's state dictionary
+
     try:
         os.makedirs(model_save_dir, exist_ok=True)
-        # Standard naming convention often includes model type/details
         model_save_file = os.path.join(model_save_dir, "cbow_model_state.pth")
-        # Save the entire model's state_dict for easy reloading
         torch.save(model.state_dict(), model_save_file)
         logger.info(f"💾 Model state saved to: {model_save_file}")
     except Exception as e:
         logger.error(f"❌ Failed to save model state: {e}", exc_info=True)
+
+    return epoch_losses
