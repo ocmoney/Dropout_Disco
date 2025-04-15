@@ -186,3 +186,5 @@ logs/
 # Notebook checkpoints
 .ipynb_checkpoints/
 
+# Ignore W&B files
+wandb/
