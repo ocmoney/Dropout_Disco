@@ -11,26 +11,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import argparse # Import argparse
+import argparse
 
-# Project-specific imports - Assuming running from project root
-# Adjust 'src.' prefix if your execution context changes how packages are found
-try:
-    from utils import logger, get_device
-    from src.word2vec.model import CBOW
-    from src.word2vec.vocabulary import Vocabulary
-    from src.word2vec.dataset import create_cbow_pairs, CBOWDataset
-    from src.word2vec.trainer import train_model
-except ImportError as e:
-     # Fallback for potentially different execution contexts (e.g., IDE run)
-     print(f"ImportError: {e}. Attempting alternative imports...")
-     # This assumes utils and src are directly importable
-     from utils import logger, get_device
-     from src.word2vec.model import CBOW
-     from src.word2vec.vocabulary import Vocabulary
-     from src.word2vec.dataset import create_cbow_pairs, CBOWDataset
-     from src.word2vec.trainer import train_model
-
+# Assuming execution from project root (Dropout_Disco/)
+from utils import logger, get_device
+from src.word2vec.model import CBOW
+from src.word2vec.vocabulary import Vocabulary
+from src.word2vec.dataset import create_cbow_pairs, CBOWDataset
+from src.word2vec.trainer import train_model
 
 def parse_arguments():
     """Parses command-line arguments for training."""
@@ -39,7 +27,7 @@ def parse_arguments():
     )
     parser.add_argument(
         "--corpus-file", type=str,
-        default=os.environ.get("CORPUS_FILE", "data/text8/text8.txt"),
+        default=os.environ.get("CORPUS_FILE", "data/text8.txt"),
         help="Path to the input text corpus file (e.g., text8)."
     )
     parser.add_argument(
