@@ -66,13 +66,13 @@ def parse_arguments(config):
     # --- ADDED: W&B Arguments ---
     parser.add_argument(
         '--wandb-project', type=str,
-        # default=wandb_config.get('project', 'dropout-disco-word2vec'), # Example if using config
+        default=wandb_config.get('project', 'dropout-disco-word2vec'), # Example if using config
         default='dropout-disco-word2vec', # Hardcoded default
         help='W&B project name'
     )
     parser.add_argument(
         '--wandb-entity', type=str,
-        # default=wandb_config.get('entity', None), # Example if using config
+        default=wandb_config.get('entity', None), # Example if using config
         default=None, # Usually determined by login or environment
         help='W&B entity (username or team name)'
     )
