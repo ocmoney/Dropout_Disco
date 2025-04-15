@@ -1,9 +1,9 @@
 # Hacker News Upvote Prediction
-# Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
 # File: src/word2vec/model.py
 # Description: Defines the CBOW model architecture.
-# Created: 2024-04-15
-# Updated: 2024-04-15 # Adjust date if modified
+# Created: 2025-04-15
+# Updated: 2025-04-15 # Adjust date if modified
 
 import torch
 import torch.nn as nn
