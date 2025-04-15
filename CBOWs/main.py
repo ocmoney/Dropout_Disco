@@ -1,37 +1,15 @@
-from pathlib import Path
-
-import torch 
-import torch.nn as nn
-import torch.nn.functional as F
-
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
-
-path = Path('./CBOWs/text8').absolute()
-
-with open(path, 'r') as f:
-    
-    f = f.read()
-    
-    f = f.split(' ')
-    
-
-identifyer = {}
-
-for i in range(len(f)):
-    
-    if f[i] not in identifyer:
-                
-        identifyer[f[i]] = len(identifyer) + 1
+from tokeniser import Tokeniser
+from model import CBOW as Model
 
 
-print(identifyer)
+tokeniser = Tokeniser()
 
+model = Model(tokeniser.getCorpusSize())
 
-class CBOW(nn.Module):
-    
-    def __init__(self):
-        super().__init__()
-        
-        
+token = tokeniser.getIdentifyer("the")
+
+# print(token)
+
+res = model.forward(token)
+
+print(res)
