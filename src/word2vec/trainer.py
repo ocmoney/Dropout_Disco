@@ -1,65 +1,108 @@
 # Hacker News Upvote Prediction
 # Copyright (c) 2025 Dropout Disco Team (Yurii, James, Ollie, Emil)
 # File: src/word2vec/trainer.py
-# Description: Training loop logic for Word2Vec models.
-# Created: 2025-04-15
-# Updated: 2025-04-15
+# Description: Handles the training process for the word2vec model.
+# Created: 2024-04-15
+# Updated: 2024-04-15
 
 import torch
-from torch.utils.data import DataLoader, Dataset
-# Add imports for your model, data utils, optimizer etc.
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader
+import os
+from tqdm import tqdm # Optional: for progress bar
+from utils import logger # Import project logger
+from .model import CBOW # Import model definition
 
-# TODO: Define a PyTorch Dataset for your training pairs and negative sampling
-class Word2VecDataset(Dataset):
-     def __init__(self, pairs, vocab_size, num_negative_samples=5): # Add necessary params
-         self.pairs = pairs
-         self.vocab_size = vocab_size
-         self.num_negative_samples = num_negative_samples
-         # Precompute negative sampling distribution if needed
-         # self.neg_sampling_weights = neg_sampling_weights
+def train_epoch(
+    model: CBOW,
+    dataloader: DataLoader,
+    criterion: nn.Module,
+    optimizer: optim.Optimizer,
+    device: torch.device,
+    epoch: int # For logging
+) -> float:
+    """
+    Trains the model for one epoch.
 
-     def __len__(self):
-         return len(self.pairs)
+    Args:
+        model (CBOW): The CBOW model instance.
+        dataloader (DataLoader): DataLoader providing context-target batches.
+        criterion (nn.Module): The loss function (e.g., CrossEntropyLoss).
+        optimizer (optim.Optimizer): The optimizer (e.g., Adam).
+        device (torch.device): The device to train on (CPU or MPS).
+        epoch (int): Current epoch number for logging.
 
-     def __getitem__(self, idx):
-         center_word, context_word = self.pairs[idx]
-         # Sample negative words
-         # TODO: Implement actual negative sampling based on distribution
-         negative_samples = torch.randint(0, self.vocab_size, (self.num_negative_samples,))
-         # Avoid sampling the true context word (less critical but good practice)
-         
-         return torch.tensor(center_word), torch.tensor(context_word), negative_samples
+    Returns:
+        float: The average loss for the epoch.
+    """
+    model.train() # Set model to training mode
+    total_loss = 0.0
+    num_batches = len(dataloader)
 
+    # Optional: Progress bar
+    # Use tqdm(dataloader, desc=f"Epoch {epoch+1}/{total_epochs}") if total_epochs is passed
+    data_iterator = tqdm(dataloader, desc=f"Epoch {epoch+1}", leave=False, unit="batch")
 
-def train_epoch(model, dataloader, optimizer, device):
-    model.train()
-    total_loss = 0
-    for i, batch in enumerate(dataloader):
-        center, context, negatives = [item.to(device) for item in batch]
+    for batch_idx, (context, target) in enumerate(data_iterator):
+        # Move data to the selected device
+        context, target = context.to(device), target.to(device)
 
+        # Standard training steps
         optimizer.zero_grad()
-        loss = model(center, context, negatives)
+        output_logits = model(context)
+        loss = criterion(output_logits, target)
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item()
-        if (i + 1) % 1000 == 0: # Print progress every 1000 batches
-             print(f"  Batch {i+1}/{len(dataloader)}, Loss: {loss.item():.4f}")
+        batch_loss = loss.item()
+        total_loss += batch_loss
 
-    return total_loss / len(dataloader)
+        # Update progress bar description (optional)
+        if batch_idx % 10 == 0: # Update less frequently
+             data_iterator.set_postfix(loss=f"{batch_loss:.4f}")
+
+    average_loss = total_loss / num_batches if num_batches > 0 else 0.0
+    return average_loss
 
 
-def train_word2vec_model(model, dataset, optimizer, device, epochs=1, batch_size=512):
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    model.to(device)
+def train_model(
+    model: CBOW,
+    dataloader: DataLoader,
+    criterion: nn.Module,
+    optimizer: optim.Optimizer,
+    device: torch.device,
+    epochs: int,
+    save_path: str = "models/word2vec" # Directory to save model
+):
+    """
+    Orchestrates the model training over multiple epochs.
 
-    print(f"\n--- Starting Word2Vec Training ---")
-    print(f"Epochs: {epochs}, Batch Size: {batch_size}, Device: {device}")
+    Args:
+        model (CBOW): The model to train.
+        dataloader (DataLoader): The data loader.
+        criterion (nn.Module): Loss function.
+        optimizer (optim.Optimizer): Optimizer.
+        device (torch.device): Device to train on.
+        epochs (int): Number of epochs to train.
+        save_path (str): Directory path to save the trained model state.
+    """
+    logger.info(f"🚀 Starting CBOW training for {epochs} epochs on device: {device.type.upper()}")
+    model.to(device) # Ensure model is on the correct device
 
     for epoch in range(epochs):
-        print(f"\n--- Epoch {epoch+1}/{epochs} ---")
-        avg_loss = train_epoch(model, dataloader, optimizer, device)
-        print(f"Epoch {epoch+1} Average Loss: {avg_loss:.4f}")
+        avg_epoch_loss = train_epoch(model, dataloader, criterion, optimizer, device, epoch)
+        logger.info(f"✅ Epoch {epoch+1}/{epochs} completed. Average Loss: {avg_epoch_loss:.4f}")
 
-    print("\n--- Training Finished ---")
-
+    # Save the trained model's state dictionary
+    logger.info("🏁 Training finished.")
+    try:
+        os.makedirs(save_path, exist_ok=True)
+        model_save_file = os.path.join(save_path, "cbow_embeddings.pth")
+        # Save only the embeddings layer's state_dict if that's all needed later
+        # torch.save(model.embeddings.state_dict(), model_save_file)
+        # Or save the whole model state
+        torch.save(model.state_dict(), model_save_file)
+        logger.info(f"💾 Model state saved to: {model_save_file}")
+    except Exception as e:
+        logger.error(f"❌ Failed to save model state: {e}", exc_info=True)
