@@ -1,12 +1,12 @@
-# Hacker News Upvote Prediction
+# src/word2vec/model.py
 # Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
-# File: src/word2vec/model.py
 # Description: Defines the CBOW model architecture.
 # Created: 2024-04-15
-# Updated: 2024-04-15
+# Updated: 2024-04-15 # Adjust date if modified
 
 import torch
 import torch.nn as nn
+from utils import logger
 
 class CBOW(nn.Module):
     """
@@ -19,31 +19,39 @@ class CBOW(nn.Module):
         Initializes the CBOW model layers.
 
         Args:
-            vocab_size (int): The total number of unique words in the vocabulary.
-            embedding_dim (int): The desired dimensionality of the word embeddings.
+            vocab_size (int): The total number of unique words.
+            embedding_dim (int): The desired dimensionality of embeddings.
         """
         super().__init__()
-        # Embedding layer: maps word indices to dense vectors
-        # padding_idx=0 could be useful if we reserve index 0 for padding
+        # Input embeddings (lookup table)
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
-        # Linear layer: maps averaged context embedding to vocabulary scores
+        # Output layer predicting the target word index
         self.linear = nn.Linear(embedding_dim, vocab_size)
-        # logger.debug(f"CBOW model initialized: vocab={vocab_size}, embed_dim={embedding_dim}") # Requires logger import if used here
+        # Optional: Log initialization if logger passed or imported
+        logger.debug(f"CBOW model created: V={vocab_size}, D={embedding_dim}")
 
     def forward(self, context_indices: torch.Tensor) -> torch.Tensor:
         """
         Defines the forward pass of the CBOW model.
 
         Args:
-            context_indices (torch.Tensor): Tensor of context word indices (batch_size, context_size).
+            context_indices (torch.Tensor): Tensor of context word indices
+                                            Shape: (batch_size, context_size).
 
         Returns:
-            torch.Tensor: Logits over the vocabulary for the target word (batch_size, vocab_size).
+            torch.Tensor: Logits over vocabulary for the target word.
+                          Shape: (batch_size, vocab_size).
         """
-        # Get embeddings for context words: (batch_size, context_size, embedding_dim)
+        # embedded shape: (batch_size, context_size, embedding_dim)
         embedded = self.embeddings(context_indices)
-        # Average context embeddings along the context_size dimension: (batch_size, embedding_dim)
+        # averaged_embedded shape: (batch_size, embedding_dim)
         averaged_embedded = embedded.mean(dim=1)
-        # Pass averaged embedding through the linear layer
+        # output_logits shape: (batch_size, vocab_size)
         output_logits = self.linear(averaged_embedded)
+        # Optional: Log output shape if logger passed or imported
+        logger.debug(
+            f"Forward pass: context_indices={context_indices.shape}, "
+            f"output_logits={output_logits.shape}"
+        )
+
         return output_logits
