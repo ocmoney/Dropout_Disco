@@ -3,7 +3,7 @@
 # File: src/word2vec/vocabulary.py
 # Description: Handles vocabulary creation, mapping, and persistence.
 # Created: 2025-04-15
-# Updated: 2025-04-15 # Adjust date if modified
+# Updated: 2025-04-16
 
 import json
 import os
@@ -210,90 +210,54 @@ class Vocabulary:
             raise # Re-raise other exceptions
 
     def get_negative_samples(
-        self,
-        positive_indices: torch.Tensor,
-        num_samples: int
-    ) -> torch.Tensor:
-        """
-        Draws negative samples, ensuring they don't match positive indices.
+            self,
+            # Positive indices are primarily for context/logging now, not exclusion
+            positive_indices: torch.Tensor,
+            num_samples: int
+        ) -> torch.Tensor:
+            """
+            Draws negative samples using the precomputed distribution.
+            (Optimized version: Samples all at once, skips collision check)
 
-        Args:
-            positive_indices (torch.Tensor): Indices of positive examples
-                to exclude. Shape: (batch_size,) or (batch_size, num_pos).
-                Expected on the same device sampling occurs (CPU default).
-            num_samples (int): Number of negative samples (k) to draw
-                per row in positive_indices.
+            Args:
+                positive_indices (torch.Tensor): Not used for exclusion here,
+                                                shape (batch_size, [num_pos]).
+                num_samples (int): Number of negative samples (k) to draw
+                    per row in positive_indices.
 
-        Returns:
-            torch.Tensor: Indices of negative samples.
-                Shape: (batch_size, num_samples). Returns empty tensor if
-                sampling weights are missing or sampling fails.
-        """
-        if self.sampling_weights is None:
-            logger.error("❌ Sampling weights missing. Cannot get samples.")
-            # Return tensor with correct first dim, zero second dim
-            return torch.empty((positive_indices.shape[0], 0),
-                               dtype=torch.long,
-                               device=positive_indices.device) # Match device
+            Returns:
+                torch.Tensor: Indices of negative samples.
+                    Shape: (batch_size, num_samples). Returns empty tensor if
+                    sampling weights are missing.
+            """
+            if self.sampling_weights is None:
+                logger.error("❌ Sampling weights missing. Cannot get samples.")
+                return torch.empty((positive_indices.shape[0], 0),
+                                dtype=torch.long,
+                                device=positive_indices.device)
 
-        if num_samples <= 0:
-            return torch.empty((positive_indices.shape[0], 0),
-                               dtype=torch.long,
-                               device=positive_indices.device)
+            if num_samples <= 0:
+                return torch.empty((positive_indices.shape[0], 0),
+                                dtype=torch.long,
+                                device=positive_indices.device)
 
-        batch_size = positive_indices.shape[0]
-        # Flatten positive indices if it has multiple columns (e.g., CBOW target)
-        # We want to avoid sampling ANY of the positive targets for a given item
-        if positive_indices.dim() > 1:
-            # This case might need more careful handling depending on exact shape
-            # For now, assume positive_indices is (batch_size,) [SkipGram]
-            # or requires specific exclusion logic if (batch_size, num_pos)
-            logger.warning("Multi-dim positive_indices requires specific "
-                           "exclusion logic not fully implemented here.")
-            # Simple exclusion: Check against first positive index per row
-            exclude_indices = positive_indices[:, 0]
-        else:
-            exclude_indices = positive_indices
+            batch_size = positive_indices.shape[0]
+            total_negatives_needed = batch_size * num_samples
 
-        # Initialize output tensor for negative samples
-        neg_candidates = torch.empty((batch_size, num_samples),
-                                     dtype=torch.long,
-                                     device=positive_indices.device)
+            # Sample all negatives at once
+            # Assume sampling_weights are on CPU, move result to target device
+            neg_indices_flat = torch.multinomial(
+                self.sampling_weights, # Sampling weights tensor
+                num_samples=total_negatives_needed,
+                replacement=True # Ok to sample same neg word multiple times
+            )
 
-        # Sample negatives iteratively for each item in the batch
-        # to handle exclusions correctly. This is less vectorized but safer.
-        for i in range(batch_size):
-            positive_to_exclude = exclude_indices[i].item()
-            tries = 0
-            max_tries = num_samples * 5 # Safety limit for resampling
+            # Reshape and move to the correct device
+            neg_indices = neg_indices_flat.view(batch_size, num_samples).to(
+                positive_indices.device # Ensure result is on same device
+            )
 
-            # Sample k candidates for the i-th item
-            item_negs = torch.multinomial(
-                self.sampling_weights, # Assumed on CPU for now
-                num_samples=num_samples,
-                replacement=True
-            ).to(positive_indices.device) # Move samples to target device
+            # Collision check removed for performance
+            # Collisions are generally rare for large vocabs & moderate k
 
-            # Check for collisions and resample if necessary
-            collision_mask = (item_negs == positive_to_exclude)
-            while collision_mask.any() and tries < max_tries:
-                num_collisions = collision_mask.sum().item()
-                # Resample only for the collided indices
-                resamples = torch.multinomial(
-                    self.sampling_weights,
-                    num_samples=num_collisions,
-                    replacement=True
-                ).to(positive_indices.device)
-                # Place resamples into the correct positions
-                item_negs[collision_mask] = resamples
-                # Check for new collisions
-                collision_mask = (item_negs == positive_to_exclude)
-                tries += num_collisions # Count total resample attempts
-
-            if tries >= max_tries:
-                logger.warning(f"Max resampling tries exceeded for item {i}."
-                               " Some negative samples might match positive.")
-
-            neg_candidates[i] = item_negs
-
-        return neg_candidates
+            return neg_indices
