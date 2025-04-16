@@ -10,7 +10,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 import argparse
 import yaml
 import json
@@ -19,9 +19,10 @@ import wandb
 
 
 from utils import logger, get_device
-from src.word2vec.model import CBOW
+from src.word2vec.model import CBOW, SkipGram
 from src.word2vec.vocabulary import Vocabulary
 from src.word2vec.dataset import create_cbow_pairs, CBOWDataset
+from src.word2vec.dataset import create_skipgram_pairs, SkipGramDataset
 from src.word2vec.trainer import train_model
 
 def load_config(config_path="config.yaml"):
@@ -39,60 +40,112 @@ def load_config(config_path="config.yaml"):
         logger.error(f"❌ Error loading config file: {e}", exc_info=True)
         return None
 
+# train_word2vec.py
+# Copyright (c) 2024 Dropout Disco Team (Yurii, James, Ollie, Emil)
+# Description: Main script to train Word2Vec (CBOW or SkipGram) model.
+# Accepts hyperparameters via command-line arguments and config file.
+
+import os
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, Dataset # Import Dataset base class
+import argparse
+import yaml
+import json
+import matplotlib.pyplot as plt
+import wandb
+
+# --- Project-specific imports ---
+from utils import logger, get_device
+# Import both model classes
+from src.word2vec.model import CBOW, SkipGram
+from src.word2vec.vocabulary import Vocabulary
+# Import both dataset classes and pair creation functions
+from src.word2vec.dataset import (
+    create_cbow_pairs, CBOWDataset,
+    create_skipgram_pairs, SkipGramDataset
+)
+# Import the modified trainer
+from src.word2vec.trainer import train_model
+
+# --- Helper Functions ---
+# (Keep format_num_words, load_config, save_losses, plot_losses as before)
+def format_num_words(num_words):
+    if num_words == -1: return "All"
+    if num_words >= 1_000_000: return f"{num_words // 1_000_000}M"
+    if num_words >= 1_000: return f"{num_words // 1_000}k"
+    return str(num_words)
+
+def load_config(config_path="config.yaml"):
+    logger.info(f"Loading configuration from: {config_path}")
+    try:
+        with open(config_path, 'r') as f: config = yaml.safe_load(f)
+        logger.info("Configuration loaded successfully.")
+        return config
+    except Exception as e: logger.error(f"❌ Error loading config: {e}"); return None
+
+def save_losses(losses: list, save_dir: str, filename="training_losses.json"):
+    loss_file = os.path.join(save_dir, filename)
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+        with open(loss_file, 'w', encoding='utf-8') as f:
+            json.dump({'epoch_losses': losses}, f, indent=2)
+        logger.info(f"📉 Training losses saved to: {loss_file}")
+        return loss_file
+    except Exception as e: logger.error(f"❌ Failed to save losses: {e}"); return None
+
+def plot_losses(losses: list, save_dir: str, filename="training_loss.png"):
+    if not losses: return None
+    plot_file = os.path.join(save_dir, filename)
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+        epochs = range(1, len(losses) + 1)
+        plt.figure(figsize=(10, 6)); plt.plot(epochs, losses, marker='o', linestyle='-')
+        plt.title('Training Loss per Epoch'); plt.xlabel('Epoch'); plt.ylabel('Average Loss')
+        plt.xticks(epochs); plt.grid(True, ls='--', linewidth=0.5); plt.savefig(plot_file)
+        logger.info(f"📈 Training loss plot saved to: {plot_file}"); plt.close()
+        return plot_file
+    except Exception as e: logger.error(f"❌ Failed to plot losses: {e}"); return None
+
+
 def parse_arguments(config):
     """Parses command-line arguments, using loaded config for defaults."""
-    parser = argparse.ArgumentParser(
-        description="Train CBOW word2vec model.",
-        conflict_handler='resolve'
-    )
+    parser = argparse.ArgumentParser(description="Train Word2Vec model.", conflict_handler='resolve')
     paths = config.get('paths', {})
     w2v_params = config.get('word2vec', {})
     train_params = config.get('training', {})
-    # Optional: Add wandb defaults from config if you put them there
-    wandb_config = config.get('wandb', {})
 
-    # --- Standard Training Arguments ---
-    parser.add_argument("--corpus-file", type=str, default=paths.get('corpus_file', "data/text8.txt"), help="Path to the input text corpus file.")
-    parser.add_argument("--model-save-dir", type=str, default=paths.get('model_save_dir', "models/word2vec"), help="Base directory to save model artifacts.")
-    parser.add_argument("--embed-dim", type=int, default=w2v_params.get('embedding_dim', 128), help="Dimensionality of word embeddings.")
-    parser.add_argument("--window-size", type=int, default=w2v_params.get('window_size', 3), help="Context window size (words on each side).")
-    parser.add_argument("--min-freq", type=int, default=w2v_params.get('min_word_freq', 5), help="Minimum word frequency for vocabulary.")
+    parser.add_argument("--corpus-file", type=str, default=paths.get('corpus_file', "data/text8.txt"), help="Path to corpus.")
+    parser.add_argument("--model-save-dir", type=str, default=paths.get('model_save_dir', "models/word2vec"), help="Base save directory.")
+    # --- Word2Vec Specific Args ---
+    parser.add_argument(
+        "--model-type", type=str,
+        default=w2v_params.get('model_type', "CBOW"), # Default from config
+        choices=['CBOW', 'SkipGram'], # Restrict choices
+        help="Word2Vec model type (CBOW or SkipGram)."
+    )
+    parser.add_argument("--embed-dim", type=int, default=w2v_params.get('embedding_dim', 128), help="Embedding dimension.")
+    parser.add_argument("--window-size", type=int, default=w2v_params.get('window_size', 3), help="Context window size.")
+    parser.add_argument("--min-freq", type=int, default=w2v_params.get('min_word_freq', 5), help="Min word frequency.")
+    # --- Training Args ---
     parser.add_argument("--batch-size", type=int, default=train_params.get('batch_size', 512), help="Training batch size.")
-    parser.add_argument("--epochs", type=int, default=train_params.get('epochs', 10), help="Number of training epochs.")
-    parser.add_argument("--lr", type=float, default=train_params.get('learning_rate', 0.01), help="Learning rate for the Adam optimizer.")
-    parser.add_argument("--num-words", type=int, default=train_params.get('num_words_to_process', -1), help="Max words from corpus (-1 for all).")
-    parser.add_argument("--force-rebuild-vocab", action='store_true', default=False, help="Force rebuilding the vocabulary.")
-
-    # --- ADDED: W&B Arguments ---
-    parser.add_argument(
-        '--wandb-project', type=str,
-        default=wandb_config.get('project', 'dropout-disco-word2vec'), # Example if using config
-        help='W&B project name'
-    )
-    parser.add_argument(
-        '--wandb-entity', type=str,
-        default=wandb_config.get('entity', None), # Example if using config
-        help='W&B entity (username or team name)'
-    )
-    parser.add_argument(
-        '--wandb-run-name', type=str, default=None,
-        help='Custom name for this W&B run (defaults to auto-generated)'
-    )
-    parser.add_argument(
-        '--no-wandb', action='store_true', default=False,
-        help='Disable W&B logging for this run'
-    )
-    # --- END of W&B Arguments ---
+    parser.add_argument("--epochs", type=int, default=train_params.get('epochs', 10), help="Number of epochs.")
+    parser.add_argument("--lr", type=float, default=train_params.get('learning_rate', 0.01), help="Learning rate.")
+    parser.add_argument("--num-words", type=int, default=train_params.get('num_words_to_process', -1), help="Max words (-1 for all).")
+    parser.add_argument("--force-rebuild-vocab", action='store_true', default=False, help="Force rebuilding vocabulary.")
+    # --- W&B Args ---
+    parser.add_argument('--wandb-project', type=str, default='dropout-disco-word2vec', help='W&B project name')
+    parser.add_argument('--wandb-entity', type=str, default=None, help='W&B entity')
+    parser.add_argument('--wandb-run-name', type=str, default=None, help='Custom W&B run name')
+    parser.add_argument('--no-wandb', action='store_true', default=False, help='Disable W&B logging')
 
     args = parser.parse_args()
-
     logger.info("--- Effective Configuration ---")
-    for arg, value in vars(args).items():
-         arg_cli = "--" + arg.replace('_', '-')
-         logger.info(f"  {arg_cli:<25}: {value}")
+    for arg, value in vars(args).items(): logger.info(f"  --{arg.replace('_', '-'):<25}: {value}")
     logger.info("-----------------------------")
-
     return args
+
 
 def save_losses(losses: list, save_dir: str, filename="cbow_training_losses.json"):
     """Saves the list of epoch losses to a JSON file."""
@@ -219,16 +272,36 @@ def main():
     if vocab_size <= 1: logger.error("❌ Vocab only UNK."); return
     logger.info(f"Vocabulary size: {vocab_size}")
 
-    logger.info("Generating context-target pairs..."); indexed_pairs = create_cbow_pairs(words, vocab, args.window_size)
-    if not indexed_pairs: logger.error("❌ No pairs generated."); return
-    logger.info("Creating PyTorch Dataset and DataLoader..."); dataset = CBOWDataset(indexed_pairs)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=(device.type != 'mps'))
-    logger.info(f"DataLoader created with batch size {args.batch_size}.")
+    # --- Create Dataset & DataLoader based on model_type ---
+    logger.info(f"Generating {args.model_type} training pairs...")
+    dataset: Dataset # Type hint for clarity
+    if args.model_type == "CBOW":
+        indexed_pairs = create_cbow_pairs(words, vocab, args.window_size)
+        if not indexed_pairs: logger.error("❌ No CBOW pairs."); return
+        dataset = CBOWDataset(indexed_pairs)
+    elif args.model_type == "SkipGram":
+        indexed_pairs = create_skipgram_pairs(words, vocab, args.window_size)
+        if not indexed_pairs: logger.error("❌ No SkipGram pairs."); return
+        dataset = SkipGramDataset(indexed_pairs)
+    else:
+        logger.error(f"❌ Unknown model_type: {args.model_type}"); return
 
-    # --- Initialize Model, Loss, Optimizer ---
-    logger.info("Initializing CBOW model..."); model = CBOW(vocab_size=vocab_size, embedding_dim=args.embed_dim)
-    criterion = nn.CrossEntropyLoss(); optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    logger.info(f"Model, Criterion, Optimizer ready.")
+    logger.info("Creating PyTorch DataLoader...")
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=(device.type != 'mps'))
+    logger.info(f"DataLoader ready with {len(dataset):,} pairs, batch size {args.batch_size}.")
+
+    # --- Initialize Model based on model_type ---
+    logger.info(f"Initializing {args.model_type} model...")
+    model: nn.Module # Type hint
+    if args.model_type == "CBOW":
+        model = CBOW(vocab_size=vocab_size, embedding_dim=args.embed_dim)
+    elif args.model_type == "SkipGram":
+        model = SkipGram(vocab_size=vocab_size, embedding_dim=args.embed_dim)
+    # Add else block if more models were possible
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    logger.info(f"Model, Criterion, Optimizer (Adam, lr={args.lr}) ready.")
 
     # --- Train Model ---
     # NOTE: We need to modify train_model to accept the wandb run object for logging
