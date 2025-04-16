@@ -6,6 +6,7 @@
 # Updated: 2025-04-16
 
 import os
+from dotenv import load_dotenv
 import sys
 import torch
 import torch.nn as nn
@@ -13,6 +14,10 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 import argparse
 import wandb
+
+
+# Load environment variables from .env file
+load_dotenv()
 
 # --- Add project root to sys.path --- START ---
 # This allows importing modules from 'src' and 'utils' when run from root
