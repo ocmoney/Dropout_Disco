@@ -24,7 +24,7 @@ word2vec:
 
 # --- Word2Vec Training Hyperparameters ---
 training:
-  num_words_to_process: 100_000      # Max words from corpus (-1 for all)
+  num_words_to_process: -1           # Max words from corpus (-1 for all)
   epochs: 15                         # Number of training epochs
   batch_size: 512                    # Training batch size
   learning_rate: 0.001               # Initial learning rate for Adam optimizer
