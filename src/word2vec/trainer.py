@@ -10,9 +10,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import os
 from tqdm import tqdm
-from typing import List, Optional # Import Optional
+from typing import List, Optional, Union
 from utils import logger
-from .model import CBOW
+from .model import CBOW, SkipGram
 
 try:
     import wandb
@@ -25,7 +25,7 @@ except ImportError:
 
 # --- train_epoch function remains the same ---
 def train_epoch(
-    model: CBOW,
+    model: Optional[Union[CBOW, SkipGram]],
     dataloader: DataLoader,
     criterion: nn.Module,
     optimizer: optim.Optimizer,
@@ -64,7 +64,7 @@ def train_epoch(
 
 # --- train_model function MODIFIED ---
 def train_model(
-    model: CBOW,
+    model: Optional[Union[CBOW, SkipGram]],
     dataloader: DataLoader,
     criterion: nn.Module,
     optimizer: optim.Optimizer,
