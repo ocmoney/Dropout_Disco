@@ -61,138 +61,169 @@ def parse_arguments(config):
     logger.info("-----------------------------")
     return args
 
-# --- Main Function (Imports helpers now) ---
-def main():
-    """Main function to orchestrate the training process."""
-    # Load config using the utility function
-    config = load_config() # Imported from utils
-    if config is None: logger.critical("🚨 Config missing. Exiting."); return
-    args = parse_arguments(config) # Keep local or move to utils? Keep here for now.
+# train_word2vec.py
+# ... (imports, helpers, parse_arguments) ...
 
-    # --- Initialize W&B (Remains the same) ---
+def setup_experiment(args):
+    """Initializes W&B, sets up device, defines paths."""
+    logger.info("--- Setting up Experiment ---")
+    device = get_device()
     run = None
     if not args.no_wandb:
+        # ... (W&B init logic using args) ...
         try:
-            nw_str = format_num_words(args.num_words) # Imported from utils
+            nw_str = format_num_words(args.num_words)
             if not args.wandb_run_name:
-                 run_name = (
-                     f"{args.model_type}_D{args.embed_dim}_W{args.window_size}_"
-                     f"NW{nw_str}_MF{args.min_freq}_E{args.epochs}_LR{args.lr}_BS{args.batch_size}"
-                 )
+                 run_name = f"{args.model_type}_D{args.embed_dim}_W{args.window_size}_NW{nw_str}_MF{args.min_freq}_E{args.epochs}_LR{args.lr}_BS{args.batch_size}"
             else: run_name = args.wandb_run_name
-            run = wandb.init(project=args.wandb_project, entity=args.wandb_entity,
-                             config=vars(args), name=run_name, save_code=True)
+            run = wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=vars(args), name=run_name, save_code=True)
             logger.info(f"📊 Initialized W&B run: {run.name} ({run.get_url()})")
         except Exception as e: logger.error(f"❌ Failed W&B init: {e}"); run = None
     else: logger.info("📊 W&B logging disabled.")
 
-    logger.info(f"🚀 Starting Word2Vec {args.model_type} Training...")
-    device = get_device() # Imported from utils
-
-    # --- Define Dynamic Paths (Uses format_num_words) ---
+    # Define paths
     base_model_dir = args.model_save_dir
     corpus_name = os.path.splitext(os.path.basename(args.corpus_file))[0]
-    nw_str = format_num_words(args.num_words) # Imported from utils
+    nw_str = format_num_words(args.num_words)
     vocab_filename = f"{corpus_name}_vocab_NW{nw_str}_MF{args.min_freq}.json"
     vocab_file_path = os.path.join(base_model_dir, vocab_filename)
-    run_name_fs = (
-        f"{args.model_type}_D{args.embed_dim}_W{args.window_size}_NW{nw_str}_"
-        f"MF{args.min_freq}_E{args.epochs}_LR{args.lr}_BS{args.batch_size}"
-    )
+    run_name_fs = f"{args.model_type}_D{args.embed_dim}_W{args.window_size}_NW{nw_str}_MF{args.min_freq}_E{args.epochs}_LR{args.lr}_BS{args.batch_size}"
     run_save_dir = os.path.join(base_model_dir, run_name_fs)
     model_save_file = os.path.join(run_save_dir, "model_state.pth")
-    loss_json_filename = "training_losses.json" # Define filename for util func
-    loss_plot_filename = "training_loss.png"   # Define filename for util func
+    loss_json_filename = "training_losses.json"
+    loss_plot_filename = "training_loss.png"
 
-    logger.info(f"Target Vocabulary File: {vocab_file_path}")
-    logger.info(f"Run artifacts directory: {run_save_dir}")
+    paths = {
+        "vocab_file": vocab_file_path,
+        "run_save_dir": run_save_dir,
+        "model_save_file": model_save_file,
+        "loss_json_file": os.path.join(run_save_dir, loss_json_filename),
+        "loss_plot_file": os.path.join(run_save_dir, loss_plot_filename)
+    }
+    logger.info(f"Artifacts directory: {run_save_dir}")
 
-    # --- Load Corpus (Remains the same) ---
-    # ... (corpus loading logic) ...
+    return device, run, paths
+
+
+def prepare_data(args, paths):
+    """Loads corpus, builds/loads vocab, creates dataset & dataloader."""
+    logger.info("--- Preparing Data ---")
+    # Load Corpus
     logger.info(f"📖 Loading corpus from: {args.corpus_file}")
     try:
+        # ... (corpus loading logic using args.corpus_file, args.num_words) ...
         with open(args.corpus_file, 'r', encoding='utf-8') as f: words = f.read().strip().split()
         logger.info(f"  Loaded {len(words):,} total words.")
+        nw_str = format_num_words(args.num_words) # Use helper
         if args.num_words > 0 and len(words) > args.num_words:
              words = words[:args.num_words]; logger.info(f"  Using first {len(words):,} words ({nw_str}).")
-    except Exception as e: logger.error(f"❌ Error loading corpus: {e}"); return
+    except Exception as e: logger.error(f"❌ Error loading corpus: {e}"); return None, None, None
 
-
-    # --- Build or Load Vocabulary (Remains the same, uses vocab_file_path) ---
-    # ... (vocab loading/building logic) ...
+    # Build/Load Vocab
     vocab = None
-    if os.path.exists(vocab_file_path) and not args.force_rebuild_vocab:
-        try: vocab = Vocabulary.load_vocab(vocab_file_path)
+    if os.path.exists(paths["vocab_file"]) and not args.force_rebuild_vocab:
+        try: vocab = Vocabulary.load_vocab(paths["vocab_file"])
         except Exception: logger.error("Failed loading vocab, rebuilding..."); vocab = None
     if vocab is None:
         logger.info(f"Building/Rebuilding vocab (min_freq={args.min_freq})..."); vocab = Vocabulary(min_freq=args.min_freq)
-        vocab.build_vocab(words); vocab.save_vocab(vocab_file_path)
-    elif vocab.sampling_weights is None: # Check if weights needed rebuilding
-         logger.warning("Rebuilding vocab to calculate sampling weights...")
-         vocab.build_vocab(words); vocab.save_vocab(vocab_file_path)
+        vocab.build_vocab(words); vocab.save_vocab(paths["vocab_file"])
+    elif vocab.sampling_weights is None: # Rebuild if loaded vocab lacks weights for NS
+         logger.warning("Rebuilding vocab for sampling weights..."); vocab.build_vocab(words); vocab.save_vocab(paths["vocab_file"])
     vocab_size = len(vocab)
-    if vocab_size <= 1 or vocab.sampling_weights is None:
-        logger.error("❌ Vocab invalid or missing sampling weights."); return
+    if vocab_size <= 1 or vocab.sampling_weights is None: logger.error("❌ Vocab invalid/missing weights."); return None, None, None
     logger.info(f"Vocabulary size: {vocab_size}")
 
-
-    # --- Create Dataset & DataLoader (Remains the same) ---
-    # ... (dataset/dataloader creation logic) ...
-    logger.info(f"Generating {args.model_type} training pairs...")
-    dataset: Dataset
+    # Create Dataset & DataLoader
+    logger.info(f"Generating {args.model_type} training pairs..."); dataset: Dataset
     if args.model_type == "CBOW": indexed_pairs = create_cbow_pairs(words, vocab, args.window_size); dataset = CBOWDataset(indexed_pairs)
     elif args.model_type == "SkipGram": indexed_pairs = create_skipgram_pairs(words, vocab, args.window_size); dataset = SkipGramDataset(indexed_pairs)
-    else: logger.error(f"❌ Unknown model_type: {args.model_type}"); return
-    if not indexed_pairs: logger.error(f"❌ No {args.model_type} pairs generated."); return
-    logger.info("Creating DataLoader..."); dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=(device.type != 'mps'))
+    else: logger.error(f"❌ Unknown model_type: {args.model_type}"); return None, None, None
+    if not indexed_pairs: logger.error(f"❌ No {args.model_type} pairs generated."); return None, None, None
+
+    logger.info("Creating DataLoader..."); dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=(args.device.type != 'mps')) # Pass device from args
     logger.info(f"DataLoader ready with {len(dataset):,} pairs, batch size {args.batch_size}.")
 
+    return vocab, dataloader, vocab_size
 
-    # --- Initialize Model, Loss, Optimizer (Select BCE Loss) ---
-    logger.info(f"Initializing {args.model_type} model...")
+
+def initialize_model(args, vocab_size):
+    """Initializes the model, criterion, and optimizer."""
+    logger.info("--- Initializing Model ---")
+    logger.info(f"Initializing {args.model_type} model (Embed Dim: {args.embed_dim})...")
     model: nn.Module
     if args.model_type == "CBOW": model = CBOW(vocab_size=vocab_size, embedding_dim=args.embed_dim)
     elif args.model_type == "SkipGram": model = SkipGram(vocab_size=vocab_size, embedding_dim=args.embed_dim)
-    criterion = nn.BCEWithLogitsLoss() # USE BCE LOSS FOR NEGATIVE SAMPLING
+    else: raise ValueError(f"Unknown model_type: {args.model_type}") # Should not happen if argparse choices used
+
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    logger.info(f"Model, Criterion (BCEWithLogitsLoss), Optimizer ready.")
+    logger.info(f"Model, Criterion (BCEWithLogitsLoss), Optimizer (Adam, lr={args.lr}) ready.")
+    return model, criterion, optimizer
 
 
-    # --- Train Model (Passes k from args) ---
-    epoch_losses = train_model(
-        model=model, dataloader=dataloader, criterion=criterion,
-        optimizer=optimizer, device=device, epochs=args.epochs,
-        model_save_dir=run_save_dir,
-        vocab=vocab, k=args.negative_samples, model_type=args.model_type,
-        wandb_run=run
-    )
-
-    # --- Save/Plot Losses (Uses imported functions) ---
+def finalize_run(run, epoch_losses, paths, args, config):
+    """Saves local artifacts, logs artifacts to W&B, finishes W&B run."""
+    logger.info("--- Finalizing Run ---")
     loss_file_path = None; plot_file_path = None
     if epoch_losses:
-        loss_file_path = save_losses(epoch_losses, run_save_dir, loss_json_filename) # Imported
-        plot_file_path = plot_losses(epoch_losses, run_save_dir, loss_plot_filename) # Imported
+        loss_file_path = save_losses(epoch_losses, paths["run_save_dir"]) # Use paths dict
+        plot_file_path = plot_losses(epoch_losses, paths["run_save_dir"]) # Use paths dict
     else: logger.warning("Training returned no losses.")
 
-    # --- Log Artifacts to W&B (Remains the same) ---
-    # ... (artifact logging logic) ...
-    if run: # Only log artifacts if W&B run exists
+    # Log Artifacts to W&B
+    if run: # Check if W&B run exists
         logger.info("☁️ Logging artifacts to W&B...")
         try:
-            run_id = run.id if run else "local"
+            # Add args/paths needed for logging descriptions
+            nw_str = format_num_words(args.num_words)
+            run_id = run.id
+            model_save_file = paths["model_save_file"] # Get from paths
+            vocab_file_path = paths["vocab_file"]     # Get from paths
+
             model_artifact = wandb.Artifact(f"{args.model_type}_model_{run_id}", type="model"); model_artifact.add_file(model_save_file); run.log_artifact(model_artifact); logger.info("  Logged model artifact.")
             vocab_artifact = wandb.Artifact(f"vocab_{run_id}", type="vocabulary"); vocab_artifact.add_file(vocab_file_path); run.log_artifact(vocab_artifact); logger.info("  Logged vocabulary artifact.")
             if loss_file_path:
                 results_artifact = wandb.Artifact(f"results_{run_id}", type="results"); results_artifact.add_file(loss_file_path)
                 if plot_file_path: results_artifact.add_file(plot_file_path)
                 run.log_artifact(results_artifact); logger.info("  Logged results artifact.")
+            # You could also log the config file itself as an artifact
+            # config_artifact = wandb.Artifact("config"); config_artifact.add_file("config.yaml"); run.log_artifact(config_artifact)
         except Exception as e: logger.error(f"❌ Failed W&B artifact logging: {e}")
 
-
-    # --- Finish W&B Run (Remains the same) ---
-    if run: run.finish(); logger.info("☁️ W&B run finished.")
+        # Finish W&B Run
+        run.finish(); logger.info("☁️ W&B run finished.")
 
     logger.info(f"✅ {args.model_type} training process completed.")
+
+
+def main():
+    """Main function to orchestrate the training process."""
+    config = load_config()
+    if config is None: return
+    args = parse_arguments(config)
+
+    # Setup experiment (W&B, device, paths)
+    device, run, paths = setup_experiment(args)
+    args.device = device # Add device to args for convenience if needed later
+
+    # Prepare data (load corpus, vocab, dataset, dataloader)
+    vocab, dataloader, vocab_size = prepare_data(args, paths)
+    if dataloader is None: return # Exit if data prep failed
+
+    # Initialize model components
+    model, criterion, optimizer = initialize_model(args, vocab_size)
+
+    # Train the model
+    epoch_losses = train_model(
+        model=model, dataloader=dataloader, criterion=criterion,
+        optimizer=optimizer, device=device, epochs=args.epochs,
+        model_save_dir=paths["run_save_dir"], # Pass specific save dir
+        vocab=vocab, k=args.negative_samples, model_type=args.model_type,
+        wandb_run=run # Pass run object
+    )
+
+    # Finalize (save local artifacts, log W&B artifacts, finish run)
+    finalize_run(run, epoch_losses, paths, args, config)
 
 
 if __name__ == "__main__":
