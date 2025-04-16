@@ -75,8 +75,9 @@ class Vocabulary:
         )
 
         # --- Calculate Negative Sampling Weights ---
-        logger.info(f"Calculating negative sampling weights",
-                    " (exponent={ns_exponent})...")
+        logger.info(
+           f"Calculating negative sampling weights (exponent={ns_exponent})..."
+        )
         pow_freqs = []
         # Use idx2word order to ensure weights align with indices
         for word in self.idx2word:
