@@ -124,8 +124,7 @@ Desktop.ini
 
 # --- Other ---
 # dotenv environment variables file
-.env*
-!.env.example # Often keep an example template
+.env
 
 # Docker ignore (can use .dockerignore, but often added here too)
 docker-compose.override.yml
@@ -179,7 +178,7 @@ logs/
 
 # Secrets
 .env
-*.env.*
+*.env
 
 # Notebook checkpoints
 .ipynb_checkpoints/
