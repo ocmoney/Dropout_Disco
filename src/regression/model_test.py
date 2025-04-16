@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-from ..word2vec.vocabulary import Vocabulary
+from word2vec.vocabulary import Vocabulary
 
 
 class RegressionModel(nn.Module):
@@ -38,26 +38,44 @@ class RegressionModel(nn.Module):
 
 
 class TextToRegressionModel(nn.Module):
-    def __init__(self, vocab_path, cbow_model_path, input_dim, hidden_dim=None):
+    def __init__(self, vocab_path, cbow_model_path, input_dim, hidden_dims=[128, 64, 32], dropout=0.2):
         """
-        Combines vocabulary, CBOW embeddings, and regression model.
-
+        Combines vocabulary, CBOW embeddings, and MLP regression model.
+        
         Args:
             vocab_path (str): Path to the saved vocabulary JSON.
             cbow_model_path (str): Path to the saved CBOW model state.
             input_dim (int): Dimension of the input embeddings.
-            hidden_dim (int, optional): Hidden layer size for regression model.
+            hidden_dims (List[int]): List of hidden layer dimensions.
+            dropout (float): Dropout probability.
         """
         super().__init__()
         # Load vocabulary
         self.vocab = Vocabulary.load_vocab(vocab_path)
-
+        
         # Load CBOW model and extract embedding layer
         cbow_state = torch.load(cbow_model_path, map_location=torch.device('cpu'))
         self.embedding = nn.Embedding.from_pretrained(cbow_state['embeddings.weight'])
-
-        # Initialize regression model
-        self.regression_model = RegressionModel(input_dim, hidden_dim)
+        
+        # Initialize MLP layers
+        layers = []
+        prev_dim = input_dim
+        
+        # Add hidden layers
+        for hidden_dim in hidden_dims:
+            layers.extend([
+                nn.Linear(prev_dim, hidden_dim),
+                nn.ReLU(),
+                nn.BatchNorm1d(hidden_dim),
+                nn.Dropout(dropout)
+            ])
+            prev_dim = hidden_dim
+        
+        # Add final output layer
+        layers.append(nn.Linear(prev_dim, 1))
+        
+        # Combine all layers
+        self.regression_model = nn.Sequential(*layers)
 
     def preprocess(self, text):
         """
@@ -73,26 +91,9 @@ class TextToRegressionModel(nn.Module):
         indices = [self.vocab.get_index(token) for token in tokens]
         return torch.tensor(indices, dtype=torch.long)
 
-    def forward(self, token_batch):
-        """
-        Forward pass: embed, average, and predict.
-
-        Args:
-            token_batch (torch.Tensor): Batch of tokenized input texts.
-                                        Shape: (batch_size, seq_len).
-
-        Returns:
-            torch.Tensor: Regression model output.
-                        Shape: (batch_size, 1).
-        """
-        # Embed the tokens
-        embeddings = self.embedding(token_batch)  # Shape: (batch_size, seq_len, embedding_dim)
-
-        # Compute the average embedding for each sentence
-        avg_embeddings = embeddings.mean(dim=1)  # Shape: (batch_size, embedding_dim)
-
-        # Pass to regression model
-        return self.regression_model(avg_embeddings)
+    def forward(self, x):
+        # x is already embedded and averaged from the collate function
+        return self.regression_model(x)
     
 
 
@@ -157,11 +158,12 @@ def evaluate_model(model, dataloader, criterion, device):
 if __name__ == "__main__":    
     # Paths
     vocab_path = "models/word2vec/text8_vocab_NW10M_MF5.json"
-    cbow_model_path = "models/word2vec/CBOW_D128_W3_NW10M_MF5_E5_LR0.001_BS512\model_state.pth" 
+    cbow_model_path = "models/word2vec/CBOW_D128_W3_NW10M_MF5_E5_LR0.001_BS512/model_state.pth" 
 
     # Hyperparameters
     input_dim = 128  # Embedding size
-    hidden_dim = 128
+    hidden_dims = [128, 64, 32]
+    dropout = 0.2
     batch_size = 32
     num_epochs = 10
     learning_rate = 0.001
@@ -170,7 +172,13 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load model
-    model = TextToRegressionModel(vocab_path, cbow_model_path, input_dim, hidden_dim).to(device)
+    model = TextToRegressionModel(
+        vocab_path=vocab_path, 
+        cbow_model_path=cbow_model_path, 
+        input_dim=input_dim, 
+        hidden_dims=[128, 64, 32],
+        dropout=0.2
+    ).to(device)
 
     # Load data
     texts = ["small sentence", "large sentence", "larger sentence", "largest sentence", "enormous sentence", "gigantic sentence"]  # Replace with your data
@@ -206,4 +214,3 @@ if __name__ == "__main__":
 
     # Print the prediction
     print(f"Prediction for '{sample_text}': {prediction.item():.4f}")
-

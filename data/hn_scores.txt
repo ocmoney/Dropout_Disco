@@ -1,0 +1,20 @@
+Show HN: I built a tool that helps you learn programming	125
+Ask HN: What's your favorite programming book?	342
+Rust 1.0 Released	567
+Python 3.9 is now available	234
+New JavaScript Framework Released	89
+Ask HN: How do you stay productive while working from home?	445
+Show HN: Open source alternative to Google Analytics	678
+The Future of Machine Learning	234
+Why Functional Programming Matters	156
+10 Tips for Better Code Reviews	223
+Learning Algorithms Through Programming and Puzzle Solving	445
+The Art of Unix Programming	334
+Understanding Deep Learning	567
+Building Microservices	234
+The Psychology of Programming	178
+Show HN: A new way to visualize data	445
+Ask HN: Best resources for learning system design?	567
+The Evolution of Programming Languages	234
+Clean Code: A Handbook of Agile Software Craftsmanship	445
+The Pragmatic Programmer	678 
