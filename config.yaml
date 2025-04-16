@@ -20,6 +20,7 @@ word2vec:
   embedding_dim: 128                 # Dimensionality of word embeddings
   window_size: 5                     # Context window size (words on each side)
   min_word_freq: 5                   # Minimum word frequency for vocabulary
+  negative_samples: 5                # Number of negative samples for training
 
 # --- Word2Vec Training Hyperparameters ---
 training:
