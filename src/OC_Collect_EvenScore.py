@@ -195,7 +195,7 @@ class BalancedWeightedL1Loss(nn.Module):
         weights = torch.ones_like(target)
         
         # Weight boundaries matching exact percentiles from the data
-        # Adjusted weights to better match the true distribution
+        # Much more aggressive weights to handle non-log-transformed values
         weights[target > 2] = 4.0     # ~30th percentile
         weights[target > 3] = 8.0     # ~55th percentile
         weights[target > 4] = 16.0    # ~70th percentile
@@ -207,41 +207,23 @@ class BalancedWeightedL1Loss(nn.Module):
         weights[target > 167] = 1024.0 # ~97th percentile
         weights[target > 329] = 2048.0 # ~99th percentile
         
-        # Extra penalty for negative predictions
-        neg_pred_mask = pred < 0
-        weights[neg_pred_mask] *= 10.0  # Heavily penalize negative predictions
-        
-        # For scores ≤ 3 (majority of data), use simple weighted absolute error
-        mask_low = target <= 3
+        # For scores ≤ 2 (majority of data), use simple weighted absolute error
+        mask_low = target <= 2
         loss_low = weights[mask_low] * torch.abs(pred[mask_low] - target[mask_low])
         
-        # For higher scores (> 3), combine absolute and relative error
-        mask_high = target > 3
+        # For higher scores (> 2), heavily emphasize relative error
+        mask_high = target > 2
         abs_diff = torch.abs(pred[mask_high] - target[mask_high])
         relative_error = abs_diff / target[mask_high]
         
-        # Asymmetric penalties for under/over-prediction
-        prediction_ratio = pred[mask_high] / target[mask_high]
+        # Stronger penalty for underestimation
         underestimation_penalty = torch.ones_like(relative_error)
-        overestimation_penalty = torch.ones_like(relative_error)
-        
-        # Penalize underestimation more severely as scores increase
-        underestimation_mask = prediction_ratio < 0.8  # Less than 80% of target
-        underestimation_penalty[underestimation_mask] = 4.0
-        
-        # Penalize extreme overestimation (but less severely than underestimation)
-        overestimation_mask = prediction_ratio > 1.5  # More than 150% of target
-        overestimation_penalty[overestimation_mask] = 2.0
-        
-        # Cap extreme predictions to prevent exploding gradients
-        max_ratio = 20.0  # Maximum allowed ratio between prediction and target
-        capped_ratio = torch.clamp(prediction_ratio, 1/max_ratio, max_ratio)
-        capped_penalty = torch.abs(capped_ratio - 1.0) * target[mask_high]
+        underestimation_mask = pred[mask_high] < target[mask_high]
+        underestimation_penalty[underestimation_mask] = 3.0  # Triple penalty for underestimation
         
         loss_high = weights[mask_high] * (
-            0.3 * abs_diff +  # Base absolute error
-            0.4 * target[mask_high] * relative_error * (underestimation_penalty + overestimation_penalty) +  # Weighted relative error
-            0.3 * capped_penalty  # Penalty for extreme ratios
+            0.2 * abs_diff +  # Reduced weight on absolute error
+            0.8 * target[mask_high] * relative_error * underestimation_penalty  # Increased weight on relative error
         )
         
         # Combine losses
