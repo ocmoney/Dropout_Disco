@@ -137,8 +137,14 @@ def analyze_predictions(results, actual_scores=None):
         "std": np.std(predicted_scores)
     }
     
-    # Calculate percentiles
-    percentiles = [10, 25, 50, 75, 90]
+    # Calculate percentiles with finer granularity in the tail
+    # Regular percentiles from 0 to 95 in steps of 5
+    regular_percentiles = list(range(0, 96, 5))
+    # Fine-grained percentiles from 95 to 100 in steps of 1
+    tail_percentiles = list(range(96, 101))
+    # Combine both lists
+    percentiles = regular_percentiles + tail_percentiles
+    
     for p in percentiles:
         analysis[f"p{p}"] = np.percentile(predicted_scores, p)
     
@@ -289,9 +295,18 @@ def main():
     logger.info(f"  Median: {analysis['median']:.2f}")
     logger.info(f"  Std: {analysis['std']:.2f}")
     
-    logger.info("\nPercentiles:")
-    for p in [10, 25, 50, 75, 90]:
-        logger.info(f"  {p}th: {analysis[f'p{p}']:.2f}")
+    # Print percentiles in a table format
+    logger.info("\nPercentile Distribution:")
+    logger.info("Percentile | Predicted Score")
+    logger.info("-" * 30)
+    
+    # Regular percentiles from 0 to 95 in steps of 5
+    for p in range(0, 96, 5):
+        logger.info(f"{p:3d}th     | {analysis[f'p{p}']:.2f}")
+    
+    # Fine-grained percentiles from 95 to 100 in steps of 1
+    for p in range(96, 101):
+        logger.info(f"{p:3d}th     | {analysis[f'p{p}']:.2f}")
     
     if 'mae' in analysis:
         logger.info("\nError Metrics:")
@@ -324,3 +339,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

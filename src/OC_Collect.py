@@ -18,6 +18,8 @@ from sqlalchemy import create_engine
 import time
 import json
 import numpy as np
+import wandb  # Import wandb
+import torch.optim as optim
 
 # Add the project root directory to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -183,14 +185,15 @@ def make_collate_fn(model):
     return collate_fn
 
 
-def train_model(model, dataloader, optimizer, criterion, device):
+def train_model(model, dataloader, optimizer, criterion, device, use_wandb=True):
     model.train()
     total_loss = 0
     start_time = time.time()
     last_print_time = start_time
     batch_counter = 0
     logger.info(f"Starting training on {len(dataloader)} batches")
-    for inputs, targets in dataloader:
+    
+    for batch_idx, (inputs, targets) in enumerate(dataloader):
         inputs, targets = inputs.to(device), targets.to(device)
         
         # Forward pass
@@ -205,6 +208,14 @@ def train_model(model, dataloader, optimizer, criterion, device):
         total_loss += loss.item()
         batch_counter += 1
         
+        # Log batch-level metrics to wandb if enabled
+        if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid too much data
+            wandb.log({
+                "batch_loss": loss.item(),
+                "batch": batch_idx,
+                "global_step": batch_idx
+            })
+        
         elapsed_since_last_print = time.time() - last_print_time
         if elapsed_since_last_print >= 60:
             current_time = time.time() - start_time
@@ -212,6 +223,7 @@ def train_model(model, dataloader, optimizer, criterion, device):
             progress = (batch_counter / len(dataloader)) * 100
             logger.info(f"Training progress: {progress:.2f}% | Avg Loss: {avg_loss:.4f} | Time: {current_time:.2f}s")
             last_print_time = time.time()
+    
     logger.info(f"Epoch completed. Final average loss: {total_loss / len(dataloader):.4f}")
     return total_loss / len(dataloader)
 
@@ -380,100 +392,55 @@ def prepare_data(data, log_transform=True):
     return model, train_loader, test_loader
 
 
-def train_and_evaluate(model, train_loader, test_loader, num_epochs=20, learning_rate=0.0005, log_transform=True):
-    """
-    Train and evaluate the model.
+def train_and_evaluate(model, train_loader, test_loader, num_epochs, learning_rate, device, use_wandb=True):
+    # Initialize wandb if enabled
+    if use_wandb:
+        wandb.init(
+            project="text-to-regression",
+            config={
+                "learning_rate": learning_rate,
+                "epochs": num_epochs,
+                "batch_size": train_loader.batch_size,
+                "model": model.__class__.__name__,
+                "optimizer": "Adam",
+                "loss": "WeightedL1Loss"
+            }
+        )
+        wandb.watch(model, log="all")
     
-    Args:
-        model (TextToRegressionModel): Model to train
-        train_loader (DataLoader): Training data loader
-        test_loader (DataLoader): Test data loader
-        num_epochs (int): Number of training epochs
-        learning_rate (float): Learning rate for optimizer
-        log_transform (bool): Whether targets were log-transformed
-        
-    Returns:
-        tuple: (trained_model, training_losses, test_losses)
-    """
-    # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    
-    # Set up optimizer with weight decay (L2 regularization)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
-    
-    # Use a more aggressive scheduler
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, 
-        max_lr=learning_rate,
-        epochs=num_epochs,
-        steps_per_epoch=len(train_loader),
-        pct_start=0.3,
-        anneal_strategy='cos'
-    )
-    
-    # Add gradient clipping
-    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-    
-    # Use weighted L1 loss (MAE) for better handling of skewed distributions
+    # Initialize optimizer and criterion
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = WeightedL1Loss()
     
     # Training loop
     training_losses = []
     test_losses = []
-    test_losses_original = []  # For tracking original scale losses
-    best_test_loss = float('inf')
-    best_model_state = None
-    patience = 5
-    patience_counter = 0
     
     for epoch in range(num_epochs):
         # Train
-        train_loss = train_model(model, train_loader, optimizer, criterion, device)
+        train_loss = train_model(model, train_loader, optimizer, criterion, device, use_wandb)
         training_losses.append(train_loss)
         
         # Evaluate
-        if log_transform:
-            test_loss, test_loss_original = evaluate_model(model, test_loader, criterion, device, log_transform)
-            test_losses.append(test_loss)
-            test_losses_original.append(test_loss_original)
-        else:
-            test_loss = evaluate_model(model, test_loader, criterion, device, log_transform)
-            test_losses.append(test_loss)
+        test_loss = evaluate_model(model, test_loader, criterion, device)
+        test_losses.append(test_loss)
         
-        # Update learning rate scheduler
-        scheduler.step()
+        # Log metrics to wandb if enabled
+        if use_wandb:
+            wandb.log({
+                "epoch": epoch,
+                "train_loss": train_loss,
+                "test_loss": test_loss,
+                "learning_rate": optimizer.param_groups[0]['lr']
+            })
         
-        # Check if this is the best model so far
-        if test_loss < best_test_loss:
-            best_test_loss = test_loss
-            best_model_state = model.state_dict().copy()
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            
-        # Early stopping
-        if patience_counter >= patience:
-            logger.info(f"Early stopping triggered after {epoch+1} epochs")
-            break
-            
-        if log_transform:
-            logger.info(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Test Loss (log): {test_loss:.4f}, Test Loss (original): {test_loss_original:.4f}")
-        else:
-            logger.info(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}")
+        logger.info(f"Epoch {epoch+1}/{num_epochs} | Train Loss: {train_loss:.4f} | Test Loss: {test_loss:.4f}")
     
-    # Load the best model state
-    if best_model_state is not None:
-        model.load_state_dict(best_model_state)
-        logger.info(f"Loaded best model with test loss: {best_test_loss:.4f}")
+    # Close wandb run if it was initialized
+    if use_wandb:
+        wandb.finish()
     
-    # Save the trained model
-    if log_transform:
-        save_model(model, training_losses, test_losses, test_losses_original, log_transform)
-    else:
-        save_model(model, training_losses, test_losses, log_transform)
-    
-    return model, training_losses, test_losses
+    return training_losses, test_losses
 
 
 def save_model(model, training_losses, test_losses, test_losses_original=None, log_transform=True):
@@ -594,35 +561,29 @@ def display_score_statistics(data):
     logger.info(f"  Standard Deviation: {std_score:.2f}")
     logger.info(f"  IQR: {iqr_score:.2f} (Q1: {q1:.2f}, Q3: {q3:.2f})")
     
-    # Additional percentiles for context
-    p10 = np.percentile(scores, 10)
-    p90 = np.percentile(scores, 90)
-    logger.info(f"  10th Percentile: {p10:.2f}")
-    logger.info(f"  90th Percentile: {p90:.2f}")
+    # Calculate percentiles with finer granularity in the tail
+    # Regular percentiles from 0 to 95 in steps of 5
+    regular_percentiles = list(range(0, 96, 5))
+    # Fine-grained percentiles from 95 to 100 in steps of 1
+    tail_percentiles = list(range(96, 101))
+    # Combine both lists
+    percentiles = regular_percentiles + tail_percentiles
+    
+    percentile_values = {p: np.percentile(scores, p) for p in percentiles}
+    
+    # Print percentiles in a table format
+    logger.info("\nPercentile Distribution:")
+    logger.info("Percentile | Actual Score")
+    logger.info("-" * 30)
+    for p in percentiles:
+        logger.info(f"{p:3d}th     | {percentile_values[p]:.2f}")
     
     # Count of scores in different ranges
-    logger.info("Score Distribution:")
+    logger.info("\nScore Distribution:")
     logger.info(f"  Scores <= 1: {np.sum(scores <= 1)} ({np.sum(scores <= 1)/len(scores)*100:.2f}%)")
     logger.info(f"  Scores > 1 and <= 10: {np.sum((scores > 1) & (scores <= 10))} ({np.sum((scores > 1) & (scores <= 10))/len(scores)*100:.2f}%)")
     logger.info(f"  Scores > 10 and <= 100: {np.sum((scores > 10) & (scores <= 100))} ({np.sum((scores > 10) & (scores <= 100))/len(scores)*100:.2f}%)")
     logger.info(f"  Scores > 100: {np.sum(scores > 100)} ({np.sum(scores > 100)/len(scores)*100:.2f}%)")
-
-
-class WeightedMSELoss(nn.Module):
-    def __init__(self, alpha=0.5):
-        super().__init__()
-        self.alpha = alpha
-        
-    def forward(self, pred, target):
-        # Calculate weights based on target values
-        # Higher weights for extreme values
-        weights = torch.ones_like(target)
-        weights[target > 10] = 2.0
-        weights[target > 50] = 5.0
-        weights[target > 100] = 10.0
-        
-        # Apply weights to MSE loss
-        return torch.mean(weights * (pred - target) ** 2)
 
 
 class WeightedL1Loss(nn.Module):
@@ -632,10 +593,12 @@ class WeightedL1Loss(nn.Module):
     def forward(self, pred, target):
         # More aggressive weighting for extreme values
         weights = torch.ones_like(target)
-        weights[target > 5] = 3.0
-        weights[target > 20] = 10.0
-        weights[target > 50] = 20.0
-        weights[target > 100] = 50.0
+        weights[target > 5] = 2.0
+        weights[target > 20] = 5.0
+        weights[target > 50] = 30.0
+        weights[target > 100] = 60.0
+        # weights[target > 300] = 100.0
+        # weights[target > 1000] = 500.0
         
         # Add a small epsilon to avoid zero gradients
         return torch.mean(weights * torch.abs(pred - target) + 1e-6)
@@ -657,10 +620,38 @@ class ScorePredictor(nn.Module):
         return torch.clamp(x, min=0.1)
 
 
-def main():
-    """Main function to run the script."""
-    # Fetch data
+def setup_logging():
+    """Set up logging configuration for the application."""
+    # Create logs directory if it doesn't exist
+    os.makedirs("logs", exist_ok=True)
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s | %(name)s | %(levelname)s | [%(filename)s:%(lineno)d] | %(message)s',
+        handlers=[
+            logging.FileHandler("logs/dropout_disco.log"),
+            logging.StreamHandler()
+        ]
+    )
+    
+    logger.info("Logging system initialized successfully!")
+
+
+def load_data():
+    """
+    Load and preprocess data for training.
+    
+    Returns:
+        pandas.DataFrame: Processed data ready for training
+    """
+    logger.info("Loading data...")
+    
+    # Fetch data from database
     data = fetch_hacker_news_data()
+    if data is None or len(data) == 0:
+        logger.error("Failed to fetch data or data is empty")
+        return None
     
     # Display score statistics
     display_score_statistics(data)
@@ -668,24 +659,42 @@ def main():
     # Display sample titles before preparation
     sample_titles = display_sample_titles(data)
     
-    # Prepare data with log transformation
-    log_transform = True
-    model, train_loader, test_loader = prepare_data(data, log_transform=log_transform)
+    logger.info(f"Loaded {len(data)} records successfully")
+    return data
+
+
+def main():
+    # Set up logging
+    setup_logging()
     
-    # Display how sample titles are processed for training
-    display_training_titles(model, sample_titles)
+    # Set device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
     
-    # Train and evaluate model
-    trained_model, training_losses, test_losses = train_and_evaluate(
-        model, train_loader, test_loader, num_epochs=5, log_transform=log_transform
+    # Load and preprocess data
+    data = load_data()
+    if data is None:
+        logger.error("Failed to load data. Exiting.")
+        return
+    
+    # Prepare data for training
+    model, train_loader, test_loader = prepare_data(data)
+    if train_loader is None or test_loader is None:
+        logger.error("Failed to prepare data. Exiting.")
+        return
+    
+    # Move model to device
+    model = model.to(device)
+    
+    # Train and evaluate model with wandb logging enabled
+    training_losses, test_losses = train_and_evaluate(
+        model, train_loader, test_loader, num_epochs=5, learning_rate=0.0005, device=device, use_wandb=True
     )
     
-    # Example prediction
-    sample_text = "The best way to learn programming"
-    predicted_score = predict_score(trained_model, sample_text, 
-                                   torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
-                                   log_transform=log_transform)
-    logger.info(f"Predicted score for '{sample_text}': {predicted_score:.2f}")
+    # Save the model
+    save_model(model, training_losses, test_losses)
+    
+    logger.info("Training completed successfully.")
 
 
 if __name__ == "__main__":
