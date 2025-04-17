@@ -67,28 +67,71 @@ def load_model(model_path, vocab_path, cbow_model_path, input_dim=128):
     
     return model, log_transform
 
-def find_saved_models():
+def find_saved_models(model_dir=None):
     """
-    Find the most recent saved model in the models/text_to_regression directory.
+    Find the most recent saved model in the specified directory.
+    
+    Args:
+        model_dir (str, optional): Directory to search for models. If None, will search in both
+                                  models/text_to_regression and models/text_to_regression_balanced.
     
     Returns:
         list: List containing the path to the most recent model file
     """
-    save_dir = "models/text_to_regression"
-    if not os.path.exists(save_dir):
-        logger.error(f"Directory {save_dir} does not exist")
+    # If no specific directory is provided, search in both directories
+    if model_dir is None:
+        # Try the original directory first
+        original_dir = "models/text_to_regression"
+        balanced_dir = "models/text_to_regression_balanced"
+        
+        # Check if either directory exists
+        if os.path.exists(original_dir) and os.path.exists(balanced_dir):
+            # Both directories exist, get the most recent model from either
+            original_models = [f for f in os.listdir(original_dir) if f.startswith("model_") and f.endswith(".pth")]
+            balanced_models = [f for f in os.listdir(balanced_dir) if f.startswith("model_") and f.endswith(".pth")]
+            
+            if not original_models and not balanced_models:
+                logger.warning(f"No model files found in either {original_dir} or {balanced_dir}")
+                return []
+            
+            # Get the most recent model from either directory
+            all_models = []
+            if original_models:
+                all_models.extend([(os.path.join(original_dir, m), m) for m in original_models])
+            if balanced_models:
+                all_models.extend([(os.path.join(balanced_dir, m), m) for m in balanced_models])
+            
+            # Sort by timestamp in filename (newest first)
+            all_models.sort(key=lambda x: x[1], reverse=True)
+            most_recent_model = all_models[0][0]
+            
+            logger.info(f"Found most recent model: {os.path.basename(most_recent_model)} from {os.path.dirname(most_recent_model)}")
+            return [most_recent_model]
+        
+        # Only one directory exists
+        elif os.path.exists(original_dir):
+            model_dir = original_dir
+        elif os.path.exists(balanced_dir):
+            model_dir = balanced_dir
+        else:
+            logger.error(f"Neither {original_dir} nor {balanced_dir} exists")
+            return []
+    
+    # Use the specified directory
+    if not os.path.exists(model_dir):
+        logger.error(f"Directory {model_dir} does not exist")
         return []
     
-    model_files = [f for f in os.listdir(save_dir) if f.startswith("model_") and f.endswith(".pth")]
+    model_files = [f for f in os.listdir(model_dir) if f.startswith("model_") and f.endswith(".pth")]
     
     if not model_files:
-        logger.warning(f"No model files found in {save_dir}")
+        logger.warning(f"No model files found in {model_dir}")
         return []
     
     # Sort model files by timestamp in filename (newest first)
     model_files.sort(reverse=True)
     most_recent_model = model_files[0]
-    model_path = os.path.join(save_dir, most_recent_model)
+    model_path = os.path.join(model_dir, most_recent_model)
     
     logger.info(f"Found most recent model: {most_recent_model}")
     
@@ -252,7 +295,7 @@ def main():
     model_paths = find_saved_models()
     
     if not model_paths:
-        logger.error("No models found. Please run OC_Collect.py first to train and save a model.")
+        logger.error("No models found. Please run OC_Collect.py or OC_Collect_EvenScore.py first to train and save a model.")
         return
     
     # Get the entire test dataset
@@ -324,7 +367,7 @@ def main():
         logger.info(f"{i+1}. '{sentence}' -> {score:.2f} (Actual: {actual})")
     
     # Save results to file
-    save_dir = "models/text_to_regression"
+    save_dir = os.path.dirname(model_path)
     results_file = os.path.join(save_dir, f"results_{os.path.basename(model_path).replace('.pth', '.json')}")
     
     with open(results_file, "w") as f:
