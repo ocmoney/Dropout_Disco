@@ -15,6 +15,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from sqlalchemy import create_engine
+import time
 
 # Add the project root directory to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -128,9 +129,16 @@ def make_collate_fn(model):
     return collate_fn
 
 
-def train_model(model, dataloader, optimizer, criterion, device):
+def train_model(model, dataloader, optimizer, criterion, device, epoch_num):
     model.train()
     total_loss = 0
+    batch_count = 0
+    start_time = time.time()
+    last_print_time = start_time
+    
+    # Print initial message
+    logger.info(f"Starting epoch {epoch_num} with {len(dataloader)} batches")
+    
     for inputs, targets in dataloader:
         inputs, targets = inputs.to(device), targets.to(device)
         
@@ -144,7 +152,27 @@ def train_model(model, dataloader, optimizer, criterion, device):
         optimizer.step()
         
         total_loss += loss.item()
-    return total_loss / len(dataloader)
+        batch_count += 1
+        
+        # Check time after each batch
+        current_time = time.time()
+        elapsed_since_last_print = current_time - last_print_time
+        
+        # Print progress every minute (60 seconds)
+        if elapsed_since_last_print >= 60:
+            elapsed_time = current_time - start_time
+            avg_loss = total_loss / batch_count
+            progress = (batch_count / len(dataloader)) * 100
+            remaining_batches = len(dataloader) - batch_count
+            
+            logger.info(f"Epoch {epoch_num} | Progress: {progress:.2f}% | Remaining batches: {remaining_batches} | Avg Loss: {avg_loss:.4f} | Time: {elapsed_time:.2f}s")
+            last_print_time = current_time
+    
+    # Print final message for this epoch
+    final_avg_loss = total_loss / len(dataloader)
+    logger.info(f"Epoch {epoch_num} completed. Final average loss: {final_avg_loss:.4f}")
+    
+    return final_avg_loss
 
 
 def evaluate_model(model, dataloader, criterion, device):
@@ -295,7 +323,7 @@ def train_and_evaluate(model, train_loader, test_loader, num_epochs=10, learning
     
     for epoch in range(num_epochs):
         # Train
-        train_loss = train_model(model, train_loader, optimizer, criterion, device)
+        train_loss = train_model(model, train_loader, optimizer, criterion, device, epoch+1)
         training_losses.append(train_loss)
         
         # Evaluate
