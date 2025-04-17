@@ -15,6 +15,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from sqlalchemy import create_engine
+import time
 
 # Add the project root directory to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -131,6 +132,10 @@ def make_collate_fn(model):
 def train_model(model, dataloader, optimizer, criterion, device):
     model.train()
     total_loss = 0
+    start_time = time.time()
+    last_print_time = start_time
+    batch_counter = 0
+    logger.info(f"Starting training on {len(dataloader)} batches")
     for inputs, targets in dataloader:
         inputs, targets = inputs.to(device), targets.to(device)
         
@@ -144,6 +149,16 @@ def train_model(model, dataloader, optimizer, criterion, device):
         optimizer.step()
         
         total_loss += loss.item()
+        batch_counter += 1
+        
+        elapsed_since_last_print = time.time() - last_print_time
+        if elapsed_since_last_print >= 60:
+            current_time = time.time() - start_time
+            avg_loss = total_loss / batch_counter
+            progress = (batch_counter / len(dataloader)) * 100
+            logger.info(f"Training progress: {progress:.2f}% | Avg Loss: {avg_loss:.4f} | Time: {current_time:.2f}s")
+            last_print_time = time.time()
+    logger.info(f"Epoch completed. Final average loss: {total_loss / len(dataloader):.4f}")
     return total_loss / len(dataloader)
 
 
@@ -249,7 +264,7 @@ def prepare_data(data):
     )
     
     # Create dataloaders
-    batch_size = 32
+    batch_size = 124
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
