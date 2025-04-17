@@ -415,6 +415,7 @@ def train_and_evaluate(model, train_loader, test_loader, num_epochs, learning_ra
     # Training loop
     training_losses = []
     test_losses = []
+    test_losses_original = []
     
     for epoch in range(num_epochs):
         # Train
@@ -422,8 +423,16 @@ def train_and_evaluate(model, train_loader, test_loader, num_epochs, learning_ra
         training_losses.append(train_loss)
         
         # Evaluate
-        test_loss = evaluate_model(model, test_loader, criterion, device)
-        test_losses.append(test_loss)
+        test_result = evaluate_model(model, test_loader, criterion, device)
+        
+        # Handle the case where evaluate_model returns a tuple (when log_transform=True)
+        if isinstance(test_result, tuple):
+            test_loss, test_loss_original = test_result
+            test_losses.append(test_loss)
+            test_losses_original.append(test_loss_original)
+        else:
+            test_loss = test_result
+            test_losses.append(test_loss)
         
         # Log metrics to wandb if enabled
         if use_wandb:
