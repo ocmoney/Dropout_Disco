@@ -36,7 +36,7 @@ DB_URI = "postgresql://sy91dhb:g5t49ao@178.156.142.230:5432/hd64m1ki"
 engine = create_engine(DB_URI)
 
 class TextToRegressionModel(nn.Module):
-    def __init__(self, vocab_path, cbow_model_path, input_dim, hidden_dims=[128, 64, 32], dropout=0.3):
+    def __init__(self, vocab_path, cbow_model_path, input_dim, hidden_dims=[256, 128, 64], dropout=0.3):
         """
         Combines vocabulary, CBOW embeddings, and MLP regression model.
         
@@ -85,9 +85,9 @@ class TextToRegressionModel(nn.Module):
         """Initialize weights using Xavier/Glorot initialization."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
+                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
                 if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+                    nn.init.constant_(m.bias, 0.1)  # Small positive bias to avoid zero outputs
 
     def forward(self, x):
         # x is already embedded and averaged from the collate function
@@ -362,7 +362,7 @@ def prepare_data(data, log_transform=True):
     )
     
     # Create dataloaders
-    batch_size = 124
+    batch_size = 128
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -380,7 +380,7 @@ def prepare_data(data, log_transform=True):
     return model, train_loader, test_loader
 
 
-def train_and_evaluate(model, train_loader, test_loader, num_epochs=10, learning_rate=0.001, log_transform=True):
+def train_and_evaluate(model, train_loader, test_loader, num_epochs=20, learning_rate=0.0005, log_transform=True):
     """
     Train and evaluate the model.
     
@@ -400,15 +400,23 @@ def train_and_evaluate(model, train_loader, test_loader, num_epochs=10, learning
     model = model.to(device)
     
     # Set up optimizer with weight decay (L2 regularization)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
     
-    # Add learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=3, verbose=True
+    # Use a more aggressive scheduler
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, 
+        max_lr=learning_rate,
+        epochs=num_epochs,
+        steps_per_epoch=len(train_loader),
+        pct_start=0.3,
+        anneal_strategy='cos'
     )
     
-    # Use MSE loss for log-transformed targets
-    criterion = nn.MSELoss()
+    # Add gradient clipping
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    
+    # Use weighted L1 loss (MAE) for better handling of skewed distributions
+    criterion = WeightedL1Loss()
     
     # Training loop
     training_losses = []
@@ -434,7 +442,7 @@ def train_and_evaluate(model, train_loader, test_loader, num_epochs=10, learning
             test_losses.append(test_loss)
         
         # Update learning rate scheduler
-        scheduler.step(test_loss)
+        scheduler.step()
         
         # Check if this is the best model so far
         if test_loss < best_test_loss:
@@ -600,6 +608,55 @@ def display_score_statistics(data):
     logger.info(f"  Scores > 100: {np.sum(scores > 100)} ({np.sum(scores > 100)/len(scores)*100:.2f}%)")
 
 
+class WeightedMSELoss(nn.Module):
+    def __init__(self, alpha=0.5):
+        super().__init__()
+        self.alpha = alpha
+        
+    def forward(self, pred, target):
+        # Calculate weights based on target values
+        # Higher weights for extreme values
+        weights = torch.ones_like(target)
+        weights[target > 10] = 2.0
+        weights[target > 50] = 5.0
+        weights[target > 100] = 10.0
+        
+        # Apply weights to MSE loss
+        return torch.mean(weights * (pred - target) ** 2)
+
+
+class WeightedL1Loss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+    def forward(self, pred, target):
+        # More aggressive weighting for extreme values
+        weights = torch.ones_like(target)
+        weights[target > 5] = 3.0
+        weights[target > 20] = 10.0
+        weights[target > 50] = 20.0
+        weights[target > 100] = 50.0
+        
+        # Add a small epsilon to avoid zero gradients
+        return torch.mean(weights * torch.abs(pred - target) + 1e-6)
+
+
+class ScorePredictor(nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, 32)
+        self.fc3 = nn.Linear(32, 1)
+        self.activation = nn.GELU()
+        
+    def forward(self, x):
+        x = self.activation(self.fc1(x))
+        x = self.activation(self.fc2(x))
+        x = self.fc3(x)
+        # Ensure positive predictions with a minimum value
+        return torch.clamp(x, min=0.1)
+
+
 def main():
     """Main function to run the script."""
     # Fetch data
@@ -620,7 +677,7 @@ def main():
     
     # Train and evaluate model
     trained_model, training_losses, test_losses = train_and_evaluate(
-        model, train_loader, test_loader, num_epochs=10, log_transform=log_transform
+        model, train_loader, test_loader, num_epochs=5, log_transform=log_transform
     )
     
     # Example prediction
