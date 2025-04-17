@@ -207,7 +207,7 @@ class BalancedWeightedL1Loss(nn.Module):
         weights[target > 167] = 1024.0 # ~97th percentile
         weights[target > 329] = 2048.0 # ~99th percentile
         
-        # For scores ≤ 2 (majority of data), use simple weighted absolute error
+        # For scores ≤ 2 (majority of data), use simple weighted absolute errors
         mask_low = target <= 2
         loss_low = weights[mask_low] * torch.abs(pred[mask_low] - target[mask_low])
         
