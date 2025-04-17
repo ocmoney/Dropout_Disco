@@ -195,40 +195,35 @@ class BalancedWeightedL1Loss(nn.Module):
         weights = torch.ones_like(target)
         
         # Weight boundaries matching exact percentiles from the data
-        weights[target > 2] = 2.0     # ~30th percentile
-        weights[target > 3] = 3.0     # ~55th percentile
-        weights[target > 4] = 4.0     # ~70th percentile
-        weights[target > 5] = 5.0     # ~75th percentile
-        weights[target > 8] = 10.0    # ~80th percentile
-        weights[target > 17] = 20.0   # ~85th percentile
-        weights[target > 41] = 40.0   # ~90th percentile
-        weights[target > 105] = 80.0  # ~95th percentile
-        weights[target > 167] = 160.0 # ~97th percentile
-        weights[target > 329] = 320.0 # ~99th percentile
-        weights[target > 1000] = 640.0 # For extreme outliers
+        # Much more aggressive weights to handle non-log-transformed values
+        weights[target > 2] = 4.0     # ~30th percentile
+        weights[target > 3] = 8.0     # ~55th percentile
+        weights[target > 4] = 16.0    # ~70th percentile
+        weights[target > 5] = 32.0    # ~75th percentile
+        weights[target > 8] = 64.0    # ~80th percentile
+        weights[target > 17] = 128.0  # ~85th percentile
+        weights[target > 41] = 256.0  # ~90th percentile
+        weights[target > 105] = 512.0 # ~95th percentile
+        weights[target > 167] = 1024.0 # ~97th percentile
+        weights[target > 329] = 2048.0 # ~99th percentile
         
-        # For scores ≤ 3 (majority of data), use simple weighted absolute error
-        mask_low = target <= 3
+        # For scores ≤ 2 (majority of data), use simple weighted absolute error
+        mask_low = target <= 2
         loss_low = weights[mask_low] * torch.abs(pred[mask_low] - target[mask_low])
         
-        # For higher scores (> 3), combine absolute and relative error
-        mask_high = target > 3
+        # For higher scores (> 2), heavily emphasize relative error
+        mask_high = target > 2
         abs_diff = torch.abs(pred[mask_high] - target[mask_high])
         relative_error = abs_diff / target[mask_high]
         
-        # Stronger penalty for underestimation of high scores
+        # Stronger penalty for underestimation
         underestimation_penalty = torch.ones_like(relative_error)
         underestimation_mask = pred[mask_high] < target[mask_high]
-        underestimation_penalty[underestimation_mask] = 1.5  # 50% extra penalty for underestimation
-        
-        # Additional multiplier for very high scores (> 100)
-        high_score_multiplier = torch.ones_like(relative_error)
-        very_high_mask = target[mask_high] > 100
-        high_score_multiplier[very_high_mask] = 2.0  # Double the penalty for very high scores
+        underestimation_penalty[underestimation_mask] = 3.0  # Triple penalty for underestimation
         
         loss_high = weights[mask_high] * (
-            0.3 * abs_diff + 
-            0.7 * target[mask_high] * relative_error * underestimation_penalty * high_score_multiplier
+            0.2 * abs_diff +  # Reduced weight on absolute error
+            0.8 * target[mask_high] * relative_error * underestimation_penalty  # Increased weight on relative error
         )
         
         # Combine losses
