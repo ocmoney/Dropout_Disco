@@ -597,8 +597,8 @@ class WeightedL1Loss(nn.Module):
         weights[target > 20] = 5.0
         weights[target > 50] = 30.0
         weights[target > 100] = 60.0
-        # weights[target > 300] = 100.0
-        # weights[target > 1000] = 500.0
+        weights[target > 300] = 100.0
+        weights[target > 1000] = 500.0
         
         # Add a small epsilon to avoid zero gradients
         return torch.mean(weights * torch.abs(pred - target) + 1e-6)
