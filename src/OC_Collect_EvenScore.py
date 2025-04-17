@@ -194,22 +194,32 @@ class BalancedWeightedL1Loss(nn.Module):
         # Base weights start at 1.0 since we already have a balanced dataset
         weights = torch.ones_like(target)
         
-        # Add additional weighting for higher scores to encourage more spread
-        # These weights are more aggressive than the original to push predictions higher
-        weights[target > 2] = 2.0    # Encourage spread above median
-        weights[target > 5] = 4.0    # Push predictions up for above-average scores
-        weights[target > 10] = 8.0   # Strong emphasis on higher scores
-        weights[target > 20] = 16.0  # Very strong emphasis on high scores
-        weights[target > 50] = 32.0  # Extreme emphasis on very high scores
+        # Weight boundaries based on actual score distribution percentiles
+        weights[target > 2] = 2.0     # ~30th percentile
+        weights[target > 3] = 4.0     # ~60th percentile
+        weights[target > 5] = 8.0     # ~75th percentile
+        weights[target > 8] = 16.0    # ~80th percentile
+        weights[target > 17] = 32.0   # ~85th percentile
+        weights[target > 41] = 64.0   # ~90th percentile
+        weights[target > 105] = 128.0 # ~95th percentile
+        weights[target > 167] = 256.0 # ~97th percentile
+        weights[target > 329] = 512.0 # ~99th percentile
         
-        # Add relative error component to make errors proportional to the target value
-        relative_error = torch.abs(pred - target) / (target + 1.0)  # Add 1.0 to avoid division by zero
-        absolute_error = torch.abs(pred - target)
+        # For lower scores (≤ 3), use weighted absolute error
+        mask_low = target <= 3
+        loss_low = weights[mask_low] * torch.abs(pred[mask_low] - target[mask_low])
         
-        # Combine absolute and relative errors with weights
-        combined_error = weights * (absolute_error + relative_error)
+        # For higher scores (> 3), emphasize relative error more
+        mask_high = target > 3
+        relative_error = torch.abs(pred[mask_high] - target[mask_high]) / target[mask_high]
+        loss_high = weights[mask_high] * (0.5 * torch.abs(pred[mask_high] - target[mask_high]) + 0.5 * target[mask_high] * relative_error)
         
-        return torch.mean(combined_error)
+        # Combine losses
+        total_loss = torch.zeros_like(target)
+        total_loss[mask_low] = loss_low
+        total_loss[mask_high] = loss_high
+        
+        return torch.mean(total_loss)
 
 
 def train_model(model, dataloader, optimizer, criterion, device, use_wandb=True):
