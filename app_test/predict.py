@@ -63,16 +63,62 @@ def predict_upvotes(text, model):
     return np.exp(prediction.item()).item()
 
 
+
 # --------- Main ---------
 if __name__ == "__main__":
-    # Load trained regression model
-    model = torch.load('regression_model.pth', weights_only=False, map_location='cpu')
+    
+    
+    try:
+        # Load trained regression model
+        model = torch.load('regression_model.pth', weights_only=False, map_location='cpu')
+        model.eval()
+
+        print("Model loaded. Ready to predict upvotes.")
+        print("Press Ctrl+C to exit.")
+
+        # Continuous prediction loop
+        while True:
+            user_input = input("Input a post title: ")
+            print("Predicted upvotes:", predict_upvotes(user_input, model))
+
+    except KeyboardInterrupt:
+        print("\nExiting program.")
+
+
+
+"""
+# --------- Find Top Words ---------
+def find_top_words(model, vocab, device):
+    model.eval()
+    model = model.to(device)
+    word_scores = []
+    for word in vocab.idx2word:  # Iterate through all words in the vocabulary
+        preprocessed_embedding = preprocess_and_embed(word).unsqueeze(0).to(device)  # Preprocess and embed the word
+        with torch.no_grad():
+            prediction = model(preprocessed_embedding)  # Pass the embedding to the model
+        word_scores.append((word, np.exp(prediction.item())))  # Store the word and its predicted score
+
+    # Sort the words by their predicted scores in descending order
+    word_scores = sorted(word_scores, key=lambda x: x[1], reverse=True)
+    return word_scores[:50]  # Return the top 50 words
+
+
+# --------- Main ---------
+if __name__ == "__main__":
+    # Load the trained regression model
+    model = torch.load('regression_model.pth', map_location='cpu', weights_only=False)
     model.eval()
 
-    # Optional one-off test
-    print("Predicted upvotes:", predict_upvotes("Sample post title", model))
+    # Detect the device (GPU if available, otherwise CPU)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
-    # Continuous prediction loop
-    while True:
-        user_input = input("Input a post title: ")
-        print("Predicted upvotes:", predict_upvotes(user_input, model))
+    # Find the top 50 words
+    top_words = find_top_words(model, vocab, device)
+    print("Top 50 words with the highest predicted scores:")
+    
+    #print a [] list of just the top 50 words:
+    top_words_list = [word for word, score in top_words]
+    print(top_words_list)
+
+"""
